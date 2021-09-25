@@ -10,6 +10,8 @@ open import Data.Maybe using (Maybe; just; nothing)
 open import Agda.Builtin.Unit
 open import Data.Empty
 open import Relation.Nullary using (¬_)
+open import Data.Product using (_×_)
+open import Data.List
 
 -- I separated this because of function calls
 data VarId : Set where
@@ -84,11 +86,18 @@ data RTuple : Set where
   Ret : (v : String) → RTuple
   _,`_ : (f : RTuple) → (n : RTuple) → RTuple
 
+-- Make a list of RTuple
+rtuple2list : RTuple → List (String)
+rtuple2list (Ret v) = v ∷ []
+rtuple2list (r ,` r₁) = rtuple2list r ++ rtuple2list r₁
+
 -- Name of functions are in different namespace
 data FuncCall {A : Set} : Set where
   -- Calling a function
   <_>:=_<_> : (ret : RTuple) → (f : String) →
               (args : ATuple) → FuncCall
+  -- XXX: Note that the below allows writing code like
+  -- this: F()||F()//F()
   _||`_ : (l r : FuncCall {A}) → FuncCall
   _//`_ : (l r : FuncCall {A}) → FuncCall
 
@@ -291,6 +300,9 @@ mutual
          -----------------------------------------------------------
          → Γ , stm =[ < getProgRets (Γ fname) >:=
              fname < getProgArgs (Γ fname) > ]=>ᶠ stm'
+         -- XXX: The above needs to be extended to return a list of
+         -- fname with stm'. This will allow merge to be called in ||
+         -- and //
 
 -- Doing the evaluation of top
 evalProg : {A : Set} → (p : Top {A}) →
@@ -365,7 +377,8 @@ getstates-eq-lemma : ∀ (st stm st' : (String → ℕ)) → (args : ATuple)
                      → stm , st -[ args ]->ᴬ st'
                      → (getStates st stm args) ≡ st'
 getstates-eq-lemma st stm .(Store st v (stm v)) (Arg v) (hd .v .st) = refl
-getstates-eq-lemma st stm st' (args ,` args₁) (tl .args .args₁ .st st'' .st' cmd cmd₁) with getstates-eq-lemma st stm st'' args cmd
+getstates-eq-lemma st stm st' (args ,` args₁) (tl .args .args₁ .st st'' .st' cmd cmd₁) with
+  getstates-eq-lemma st stm st'' args cmd
 ... | refl = getstates-eq-lemma st'' stm st' args₁ cmd₁
 
 -- Lemma for getStatesR
@@ -373,7 +386,8 @@ getstatesr-eq-lemma : ∀ (stm stf stm' : (String → ℕ)) → (rets : RTuple)
                       → (stf , stm -[ rets ]->ᴿ stm')
                       → (getStatesR stm stf rets) ≡ stm'
 getstatesr-eq-lemma stm stf .(Store stm v (stf v)) .(Ret v) (hd v v1 v2 .stm) = refl
-getstatesr-eq-lemma stm stf stm' .(l ,` r) (tl l r .stm st' .stm' cmd cmd₁) with getstatesr-eq-lemma stm stf st' l cmd
+getstatesr-eq-lemma stm stf stm' .(l ,` r) (tl l r .stm st' .stm' cmd cmd₁) with
+  getstatesr-eq-lemma stm stf st' l cmd
 ... | refl = getstatesr-eq-lemma st' stf stm' r cmd₁
 
 -- Now the soundness proof for SubsArgs
@@ -391,18 +405,47 @@ SubsArgs-theorem stf stm .(Store stf v (stm v)) .(b1 &&` b2) .(Arg v) (AND b1 b2
 SubsArgs-theorem stf stm .(Store stf v (stm v)) .(b1 ||` b2) .(Arg v) (ORL b1 b2 P) (hd v .stf) = ORL b1 b2 P
 SubsArgs-theorem stf stm .(Store stf v (stm v)) .(b1 ||` b2) .(Arg v) (ORR b1 b2 P) (hd v .stf) = ORR b1 b2 P
 SubsArgs-theorem stf stm .(Store stf v (stm v)) .(¬` b) .(Arg v) (NOT b x) (hd v .stf) = NOT b x
-SubsArgs-theorem stf stm stf' .(l₁ <` r₁) .(l ,` r) (LT l₁ r₁ x) (tl l r .stf st' .stf' cmd cmd₁) rewrite getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = LT l₁ r₁ x
-SubsArgs-theorem stf stm stf' .(l₁ ≤` r₁) .(l ,` r) (LE l₁ r₁ x) (tl l r .stf st' .stf' cmd cmd₁) rewrite getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = LE l₁ r₁ x 
-SubsArgs-theorem stf stm stf' .(l₁ >` r₁) .(l ,` r) (GT l₁ r₁ x) (tl l r .stf st' .stf' cmd cmd₁) rewrite getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = GT l₁ r₁ x
-SubsArgs-theorem stf stm stf' .(l₁ ≥` r₁) .(l ,` r) (GE l₁ r₁ x) (tl l r .stf st' .stf' cmd cmd₁) rewrite getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = GE l₁ r₁ x
-SubsArgs-theorem stf stm stf' .(l₁ ≡` r₁) .(l ,` r) (EQ l₁ r₁ x) (tl l r .stf st' .stf' cmd cmd₁) rewrite getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = EQ l₁ r₁ x
+SubsArgs-theorem stf stm stf' .(l₁ <` r₁) .(l ,` r) (LT l₁ r₁ x) (tl l r .stf st' .stf' cmd cmd₁) rewrite
+ getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = LT l₁ r₁ x
+SubsArgs-theorem stf stm stf' .(l₁ ≤` r₁) .(l ,` r) (LE l₁ r₁ x) (tl l r .stf st' .stf' cmd cmd₁) rewrite
+ getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = LE l₁ r₁ x 
+SubsArgs-theorem stf stm stf' .(l₁ >` r₁) .(l ,` r) (GT l₁ r₁ x) (tl l r .stf st' .stf' cmd cmd₁) rewrite
+ getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = GT l₁ r₁ x
+SubsArgs-theorem stf stm stf' .(l₁ ≥` r₁) .(l ,` r) (GE l₁ r₁ x) (tl l r .stf st' .stf' cmd cmd₁) rewrite
+ getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = GE l₁ r₁ x
+SubsArgs-theorem stf stm stf' .(l₁ ≡` r₁) .(l ,` r) (EQ l₁ r₁ x) (tl l r .stf st' .stf' cmd cmd₁) rewrite
+ getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = EQ l₁ r₁ x
 SubsArgs-theorem stf stm stf' .TRUE .(l ,` r) TT (tl l r .stf st' .stf' cmd cmd₁) = TT
-SubsArgs-theorem stf stm stf' .(b1 &&` b2) .(l ,` r) (AND b1 b2 P P₁) (tl l r .stf st' .stf' cmd cmd₁) rewrite getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = AND b1 b2 P P₁
-SubsArgs-theorem stf stm stf' .(b1 ||` b2) .(l ,` r) (ORL b1 b2 P) (tl l r .stf st' .stf' cmd cmd₁) rewrite getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = ORL b1 b2 P
-SubsArgs-theorem stf stm stf' .(b1 ||` b2) .(l ,` r) (ORR b1 b2 P) (tl l r .stf st' .stf' cmd cmd₁) rewrite getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = ORR b1 b2 P
-SubsArgs-theorem stf stm stf' .(¬` b) .(l ,` r) (NOT b x) (tl l r .stf st' .stf' cmd cmd₁) rewrite getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = NOT b x
+SubsArgs-theorem stf stm stf' .(b1 &&` b2) .(l ,` r) (AND b1 b2 P P₁) (tl l r .stf st' .stf' cmd cmd₁) rewrite
+ getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = AND b1 b2 P P₁
+SubsArgs-theorem stf stm stf' .(b1 ||` b2) .(l ,` r) (ORL b1 b2 P) (tl l r .stf st' .stf' cmd cmd₁) rewrite
+ getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = ORL b1 b2 P
+SubsArgs-theorem stf stm stf' .(b1 ||` b2) .(l ,` r) (ORR b1 b2 P) (tl l r .stf st' .stf' cmd cmd₁) rewrite
+ getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = ORR b1 b2 P
+SubsArgs-theorem stf stm stf' .(¬` b) .(l ,` r) (NOT b x) (tl l r .stf st' .stf' cmd cmd₁) rewrite
+ getstates-eq-lemma stf stm st' l cmd | getstates-eq-lemma st' stm stf' r cmd₁ = NOT b x
 
--- DONE: We can do the same as above for ret but with stacks swapped
+
+-- The inductive case for concurrent function calls either (// or ||)
+-- This thorem is saying that if the product (conjunction) of two
+-- pre-conditions holds on the caller' stack then the pre-condition
+-- holds for each of the Funccall in the concurrent execution.
+
+-- TODO: The below theorem can be extended to N instead of just two
+-- inductively with ease. Leaving it to two for now as proof of concept.
+conc-pre-theorem : ∀ (stm stf1 stf1' stf2 stf2' : (String → ℕ))
+                   → ∀ (a1 a2 : ATuple)
+                   → (c1 : stm , stf1 -[ a1 ]->ᴬ stf1')
+                   → (c2 : stm , stf2 -[ a2 ]->ᴬ stf2')
+                   → ∀ (Q1 Q2 : Bexp {ℕ})
+                   → (SubsArgs Q1 a1 stf1 stm) × (SubsArgs Q2 a2 stf2 stm)
+                   → (stf1' |= Q1) × (stf2' |= Q2)
+conc-pre-theorem stm stf1 stf1' stf2 stf2' a1 a2 c1 c2 Q1 Q2 (fst Data.Product., snd)
+  = (SubsArgs-theorem stf1 stm stf1' Q1 a1 fst c1) Data.Product.,
+    (SubsArgs-theorem stf2 stm stf2' Q2 a2 snd c2)
+
+
+-- DONE: We do the same as Subsargs for ret but with stacks swapped
 SubsRets-theorem : ∀ (stm stf stm' : (String → ℕ)) → (Q : Bexp {ℕ})
                    → (rets : RTuple) → (P : SubsRets Q rets stm stf)
                    → (cmd : stf , stm -[ rets ]->ᴿ stm')
@@ -413,28 +456,89 @@ SubsRets-theorem stm stf .(Store stm v (stf v)) .(l >` r) .(Ret v) (GT l r x) (h
 SubsRets-theorem stm stf .(Store stm v (stf v)) .(l ≥` r) .(Ret v) (GE l r x) (hd v v1 v2 .stm) = GE l r x
 SubsRets-theorem stm stf .(Store stm v (stf v)) .(l ≡` r) .(Ret v) (EQ l r x) (hd v v1 v2 .stm) = EQ l r x
 SubsRets-theorem stm stf .(Store stm v (stf v)) .TRUE .(Ret v) TT (hd v v1 v2 .stm) = TT
-SubsRets-theorem stm stf .(Store stm v (stf v)) .(b1 &&` b2) .(Ret v) (AND b1 b2 P P₁) (hd v v1 v2 .stm) = AND b1 b2 P P₁
+SubsRets-theorem stm stf .(Store stm v (stf v)) .(b1 &&` b2) .(Ret v) (AND b1 b2 P P₁) (hd v v1 v2 .stm) =
+ AND b1 b2 P P₁
 SubsRets-theorem stm stf .(Store stm v (stf v)) .(b1 ||` b2) .(Ret v) (ORL b1 b2 P) (hd v v1 v2 .stm) = ORL b1 b2 P
 SubsRets-theorem stm stf .(Store stm v (stf v)) .(b1 ||` b2) .(Ret v) (ORR b1 b2 P) (hd v v1 v2 .stm) = ORR b1 b2 P
 SubsRets-theorem stm stf .(Store stm v (stf v)) .(¬` b) .(Ret v) (NOT b x) (hd v v1 v2 .stm) = NOT b x
-SubsRets-theorem stm stf stm' .(l₁ <` r₁) .(l ,` r) (LT l₁ r₁ x) (tl l r .stm st' .stm' cmd cmd₁) rewrite getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = LT l₁ r₁ x
-SubsRets-theorem stm stf stm' .(l₁ ≤` r₁) .(l ,` r) (LE l₁ r₁ x) (tl l r .stm st' .stm' cmd cmd₁) rewrite getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = LE l₁ r₁ x
-SubsRets-theorem stm stf stm' .(l₁ >` r₁) .(l ,` r) (GT l₁ r₁ x) (tl l r .stm st' .stm' cmd cmd₁) rewrite getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = GT l₁ r₁ x
-SubsRets-theorem stm stf stm' .(l₁ ≥` r₁) .(l ,` r) (GE l₁ r₁ x) (tl l r .stm st' .stm' cmd cmd₁) rewrite getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = GE l₁ r₁ x
-SubsRets-theorem stm stf stm' .(l₁ ≡` r₁) .(l ,` r) (EQ l₁ r₁ x) (tl l r .stm st' .stm' cmd cmd₁) rewrite getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = EQ l₁ r₁ x
+SubsRets-theorem stm stf stm' .(l₁ <` r₁) .(l ,` r) (LT l₁ r₁ x) (tl l r .stm st' .stm' cmd cmd₁) rewrite
+ getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = LT l₁ r₁ x
+SubsRets-theorem stm stf stm' .(l₁ ≤` r₁) .(l ,` r) (LE l₁ r₁ x) (tl l r .stm st' .stm' cmd cmd₁) rewrite
+ getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = LE l₁ r₁ x
+SubsRets-theorem stm stf stm' .(l₁ >` r₁) .(l ,` r) (GT l₁ r₁ x) (tl l r .stm st' .stm' cmd cmd₁) rewrite
+ getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = GT l₁ r₁ x
+SubsRets-theorem stm stf stm' .(l₁ ≥` r₁) .(l ,` r) (GE l₁ r₁ x) (tl l r .stm st' .stm' cmd cmd₁) rewrite
+ getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = GE l₁ r₁ x
+SubsRets-theorem stm stf stm' .(l₁ ≡` r₁) .(l ,` r) (EQ l₁ r₁ x) (tl l r .stm st' .stm' cmd cmd₁) rewrite
+ getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = EQ l₁ r₁ x
 SubsRets-theorem stm stf stm' .TRUE .(l ,` r) TT (tl l r .stm st' .stm' cmd cmd₁) = TT
-SubsRets-theorem stm stf stm' .(b1 &&` b2) .(l ,` r) (AND b1 b2 P P₁) (tl l r .stm st' .stm' cmd cmd₁) rewrite getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = AND b1 b2 P P₁
-SubsRets-theorem stm stf stm' .(b1 ||` b2) .(l ,` r) (ORL b1 b2 P) (tl l r .stm st' .stm' cmd cmd₁) rewrite getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = ORL b1 b2 P
-SubsRets-theorem stm stf stm' .(b1 ||` b2) .(l ,` r) (ORR b1 b2 P) (tl l r .stm st' .stm' cmd cmd₁) rewrite getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = ORR b1 b2 P
-SubsRets-theorem stm stf stm' .(¬` b) .(l ,` r) (NOT b x) (tl l r .stm st' .stm' cmd cmd₁) rewrite getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = NOT b x
+SubsRets-theorem stm stf stm' .(b1 &&` b2) .(l ,` r) (AND b1 b2 P P₁) (tl l r .stm st' .stm' cmd cmd₁) rewrite
+ getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = AND b1 b2 P P₁
+SubsRets-theorem stm stf stm' .(b1 ||` b2) .(l ,` r) (ORL b1 b2 P) (tl l r .stm st' .stm' cmd cmd₁) rewrite
+ getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = ORL b1 b2 P
+SubsRets-theorem stm stf stm' .(b1 ||` b2) .(l ,` r) (ORR b1 b2 P) (tl l r .stm st' .stm' cmd cmd₁) rewrite
+ getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = ORR b1 b2 P
+SubsRets-theorem stm stf stm' .(¬` b) .(l ,` r) (NOT b x) (tl l r .stm st' .stm' cmd cmd₁) rewrite
+ getstatesr-eq-lemma stm stf st' l cmd | getstatesr-eq-lemma st' stf stm' r cmd₁ = NOT b x
 
--- Lemma needed to prove the side condition between stacks after
--- function call
-lemma-stack-eq : ∀ (stm stf : (String → ℕ)) → (X Y : String)
-                 → (Store stm Y (stf X)) Y ≡ (stf X)
-lemma-stack-eq stm stf X Y with (Y Data.String.≟ Y)
-... | .true Relation.Nullary.because Relation.Nullary.ofʸ p = refl
-... | .false Relation.Nullary.because Relation.Nullary.ofⁿ ¬p = ⊥-elim (¬p refl)
+
+-- FIXME: The post condition is being proved only for 2 concurrent
+-- calls, but can be easily extended to N using an inductive
+-- data-structure.
+conc-post-lemma : ∀ (stf1 stf2 stm1 stm1' stm2 stm2' : (String → ℕ)) → (Q1 Q2 : Bexp {ℕ})
+                  → (r1 r2 : RTuple)
+                  → (c1 : stf1 , stm1 -[ r1 ]->ᴿ stm1')
+                  → (c2 : stf2 , stm2 -[ r2 ]->ᴿ stm2')
+                  → (SubsRets Q1 r1 stm1 stf1) × (SubsRets Q2 r2 stm2 stf2)
+                  → (stm1' |= Q1 × stm2' |= Q2)
+conc-post-lemma stf1 stf2 stm1 stm1' stm2 stm2' Q1 Q2 r1 r2 c1 c2 (fst Data.Product., snd) =
+  (SubsRets-theorem stm1 stf1 stm1' Q1 r1 fst c1) Data.Product., SubsRets-theorem stm2 stf2 stm2' Q2 r2 snd c2
+
+
+-- TODO: We need to show that stm2 |= Q2 ≡ stm |= Q2. This requires us
+-- to show that merge does not change the values of stm2, which
+-- guarantee stm2 |= Q2. This is from the rule of constancy
+
+-- TODO: Rule of constancy can be proven, by first using t_update_neq
+-- from Map and then proving the lookup on aeval.
+
+merge-cong : ∀ (v1 v2 : String) → (v1 ≡ v2) → (Ret v1 ≡ Ret v2)
+merge-cong v1 .v1 refl = refl
+
+postulate merge-lemma : ∀ (stm1 stm2 stm : (String → ℕ)) → (Q2 : Bexp {ℕ})
+              → (r1 r2 : RTuple) → (merge : stm1 , stm2 -[ r1 ]->ᴿ stm)
+              → stm2 |= Q2 → ¬ (r2 ≡ r1) → stm |= Q2
+-- merge-lemma stm1 stm2 .(Store stm2 v (stm1 v)) Q2 .(Ret v) (Ret v₂) (hd v v1 v2 .stm2) p q rewrite t-update-neq stm2 v v₂ (stm1 v) λ x → ⊥-elim (q (merge-cong v₂ v x)) = {!!}
+-- merge-lemma stm1 stm2 .(Store stm2 v (stm1 v)) Q2 .(Ret v) (r2 ,` r3) (hd v v1 v2 .stm2) p q = {!!}
+-- merge-lemma stm1 stm2 stm Q2 .(l ,` r) r2 (tl l r .stm2 st' .stm merge merge₁) p q = {!!}
+
+-- Now the theorem that Q1 &&` Q2 hold on the merged stm stack XXX:
+-- Again this is being done only for two concurrent functions, but can
+-- be extended to N via an inductive data type.
+conc-post-theorem : ∀ (stm1 stm2 stm : (String → ℕ)) → (Q1 Q2 : Bexp {ℕ})
+                    -- stm is the merged stack
+                    → (r1 r2 : RTuple) → (merge : stm1 , stm2 -[ r1 ]->ᴿ stm)
+                    → (stm1 |= Q1 × stm2 |= Q2)
+                    → (P : SubsRets Q1 r1 stm2 stm1)
+                    → ¬ (r2 ≡ r1)
+                    → (stm |= (Q1 &&` Q2))
+conc-post-theorem stm1 stm2 stm Q1 Q2 r1 r2 merge (_ Data.Product., snd) P nr =
+  AND Q1 Q2 (SubsRets-theorem stm2 stm1 stm Q1 r1 P merge) (merge-lemma stm1 stm2 stm Q2 r1 r2 merge snd nr)
+
+
+-- TODO: This is the theorem for post-condition for two concurrent
+-- function calls. This is harder than the pre-condition.
+
+-- 1.) In this case caller stack goes from stm -> stm' and stm -> stm''
+-- for the two functions called concurrently.
+
+-- 2.) stm'' and stm' need to be combined into a single stm''' after the
+-- execution of the two functions concurrently? But how? This will be
+-- done in FuncCall relational semantics data type above.
+
+-- 3.) Once we have point 2 done then we can prove the correctness same
+-- as conc-pre-theorem but for post-condition of || or //.
+
 
 -- XXX: Use the above lemma to show the side condition state of R' X ≡
 -- stf I and so on for all outputs.
