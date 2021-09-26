@@ -13,6 +13,7 @@ open import Data.Empty
 open import Relation.Nullary using (¬_)
 open import Data.Product using (_×_)
 open import Data.List
+open import Data.Nat.Properties
 
 -- I separated this because of function calls
 data VarId : Set where
@@ -195,7 +196,7 @@ tceval Γ (EXEC x) = 0 -- FIXME: Fix this later
 -- Semantics of time from here
 data _,_,_=[_]=>_ (Γ : (String → Maybe (ProgTuple {ℕ}))) (st : String → ℕ) :
            ℕ → Cmd {ℕ} → ℕ → Set where
- TSKIP : ∀ (W : ℕ) → Γ , st , W =[ SKIP ]=> W
+ TSKIP : ∀ (W : ℕ) → Γ , st , W =[ SKIP ]=> (W + 0)
 
  TASSIGN : ∀ (X : String) → ∀ (n : ℕ) → ∀ (e : Aexp {ℕ})
            → ∀ (W : ℕ) →
@@ -203,13 +204,14 @@ data _,_,_=[_]=>_ (Γ : (String → Maybe (ProgTuple {ℕ}))) (st : String → �
            Γ , st ,  W =[ (Var X := e) ]=> (W + (tceval st (Var X := e)))
 
  TSEQ : ∀ (c1 c2 : Cmd {ℕ})
-        → ∀ (W : ℕ) →
+        → ∀ (W W' W'' : ℕ)
+        → Γ , st , W =[ c1 ]=> (W + W')
+        → Γ , st , (W + W') =[ c2 ]=> (W + (W' + W'')) →
         --------------------------------------------
-        Γ , st ,  W =[ c1 ¿ c2 ]=> (W + (tceval st (c1 ¿ c2)))
+        Γ , st ,  W =[ c1 ¿ c2 ]=> (W + (W' + W''))
 
  TIF : ∀ (n1 : ℕ) → (b : Bexp {ℕ}) → (t e : Cmd {ℕ}) → ∀ (W : ℕ) →
        -----------------------------------------------------------
-       -- XXX: I have not accounted for the checking the expression time
         Γ , st , W =[ (IF b THEN t ELSE e END) ]=>
           (W + (tceval st (IF b THEN t ELSE e END) + (tbeval st b)))
 
@@ -253,7 +255,7 @@ skip-sound : (Γ : String → Maybe (ProgTuple {ℕ}))
            → (Γᵗ : String → ℕ)  -- map of labels to execution times
            → ∀ (W W' X : ℕ) → (cmd : Γ , Γᵗ , W =[ SKIP ]=> W')
            → (W ≡ X) → (W' ≡ X)
-skip-sound Γ Γᵗ W .W .W (TSKIP .W) refl = refl
+skip-sound Γ Γᵗ W .(W + 0) .W (TSKIP .W) refl rewrite +-comm W 0 = refl
 
 -- Soundness theorem for Assign WCET rule
 assign-sound : (Γ : String → Maybe (ProgTuple {ℕ}))
@@ -265,16 +267,74 @@ assign-sound : (Γ : String → Maybe (ProgTuple {ℕ}))
 assign-sound Γ st S e W .(W + tceval st (Var S := e)) .W
   .(tceval st (Var S := e)) (TASSIGN .S n .e .W) refl refl = refl
 
+
+-- Deterministic exec
+Δ-exec : (Γ : String → Maybe (ProgTuple {ℕ}))
+         → (Γᵗ : String → ℕ)
+         → ∀ (W W' W'' : ℕ) → (c1 : Cmd {ℕ})
+         → (Γ , Γᵗ , W =[ c1 ]=> W')
+         → (Γ , Γᵗ , W =[ c1 ]=> W'')
+         → W' ≡ W''
+Δ-exec Γ Γᵗ W .(W + 0) .(W + 0) .SKIP (TSKIP .W) (TSKIP .W) = refl
+Δ-exec Γ Γᵗ W .(W + tceval Γᵗ (Var X := e)) .(W + tceval Γᵗ (Var X := e)) .(Var X := e) (TASSIGN X n e .W) (TASSIGN .X n₁ .e .W) = refl
+Δ-exec Γ Γᵗ W .(W + (W' + W''')) .(W + (W'' + W'''')) .(c1 ¿ c2) (TSEQ c1 c2 .W W' W''' p1 p3) (TSEQ .c1 .c2 .W W'' W'''' p2 p4)
+ with Δ-exec Γ Γᵗ W (W + W') (W + W'') c1 p1 p2
+... | r with +-cancelˡ-≡ W r
+... | refl
+ with Δ-exec Γ Γᵗ (W + W') (W + (W' + W''')) (W + (W' + W'''')) c2 p3 p4
+... | rr with +-cancelˡ-≡ W rr
+... | rm with +-cancelˡ-≡ W' rm
+... | refl = refl
+Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ IF b THEN t ELSE e END + tbeval Γᵗ b)) .(W + (tceval Γᵗ IF b THEN t ELSE e END + tbeval Γᵗ b)) .(IF b THEN t ELSE e END) (TIF n1 b t e .W) (TIF n2 .b .t .e .W) = refl
+
+
+skip-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
+               → (Γᵗ : String → ℕ)
+               → ∀ (W1 W2 X1 X2 : ℕ)
+               → (Γ , Γᵗ , W1 =[ SKIP ]=> (W1 + X1))
+               → (Γ , Γᵗ , W2 =[ SKIP ]=> (W2 + X2))
+               → X1 ≡ X2
+skip-exec-time Γ Γᵗ W1 W2 X1 X2 p1 p2 with (W1 + X1) in eq1
+skip-exec-time Γ Γᵗ W1 W2 X1 X2 (TSKIP .W1) p2 | .(W1 + 0)
+  with +-cancelˡ-≡ W1 eq1
+skip-exec-time Γ Γᵗ W1 W2 X1 X2 (TSKIP .W1) p2 | .(W1 + 0) | refl
+  with (W2 + X2) in eq2
+skip-exec-time Γ Γᵗ W1 W2 _ X2 (TSKIP .W1) (TSKIP .W2) | .(W1 + _) | refl | .(W2 + 0) with +-cancelˡ-≡ W2 eq2
+... | refl = refl
+
+
+-- command lemma: starting from any value the command c takes X amount
+-- of time to result in the same execution time
+-- TODO: Follow the above technique for all cases!
+postulate eq-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
+               → (Γᵗ : String → ℕ)
+               → ∀ (c : Cmd {ℕ})
+               → ∀ (W1 W2 X1 X2 : ℕ)
+               → (Γ , Γᵗ , W1 =[ c ]=> (W1 + X1))
+               → (Γ , Γᵗ , W2 =[ c ]=> (W2 + X2))
+               → X1 ≡ X2
+-- eq-exec-time Γ Γᵗ c W1 W2 X1 X2 p1 p2 = {!!}
+
+
+
 -- Soundness theorem for Seq WCET rule
 seq-sound : (Γ : String → Maybe (ProgTuple {ℕ}))
             → (Γᵗ : String → ℕ)
             → (c1 c2 : Cmd {ℕ})
             → (W X1 X2 W' : ℕ)
             → (cmd : Γ , Γᵗ , W =[ c1 ¿ c2 ]=> W')
-            → (tceval Γᵗ c1 ≡ X1)
-            → (tceval Γᵗ c2 ≡ X2)
+            → (p1 : Γ , Γᵗ , W =[ c1 ]=> (W + X1))
+            → (p2 : Γ , Γᵗ , W =[ c2 ]=> (W + X2))
             → (W' ≡ W + (X1 + X2))
-seq-sound Γ Γᵗ c1 c2 W .(tceval Γᵗ c1) .(tceval Γᵗ c2) .(W + tceval Γᵗ (c1 ¿ c2)) (TSEQ .c1 .c2 .W) refl refl = refl
+seq-sound Γ Γᵗ c1 c2 W X1 X2 .(W + (W' + W''))
+  (TSEQ .c1 .c2 .W W' W'' cmd cmd₁) p1 p2
+  with Δ-exec Γ Γᵗ W (W + W') (W + X1) c1 cmd p1
+... | q with +-cancelˡ-≡ W q
+... | refl rewrite +-comm W (X1 + W'') | +-comm X1 W'' | +-assoc W'' X1 W
+    | +-comm X1 W | +-comm W'' (W + X1) | +-comm X1 X2 | +-comm W (X2 + X1)
+    | +-assoc X2 X1 W | +-comm X2 (X1 + W) | +-comm X1 W with (W + X1)
+... | rl with eq-exec-time Γ Γᵗ c2 rl W W'' X2 cmd₁ p2
+... | refl = refl
 
 -- Soundness theorem for If-else WCET rule
 ife-sound : (Γ : String → Maybe (ProgTuple {ℕ}))
