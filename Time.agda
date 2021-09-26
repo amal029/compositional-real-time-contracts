@@ -276,8 +276,10 @@ assign-sound Γ st S e W .(W + tceval st (Var S := e)) .W
          → (Γ , Γᵗ , W =[ c1 ]=> W'')
          → W' ≡ W''
 Δ-exec Γ Γᵗ W .(W + 0) .(W + 0) .SKIP (TSKIP .W) (TSKIP .W) = refl
-Δ-exec Γ Γᵗ W .(W + tceval Γᵗ (Var X := e)) .(W + tceval Γᵗ (Var X := e)) .(Var X := e) (TASSIGN X n e .W) (TASSIGN .X n₁ .e .W) = refl
-Δ-exec Γ Γᵗ W .(W + (W' + W''')) .(W + (W'' + W'''')) .(c1 ¿ c2) (TSEQ c1 c2 .W W' W''' p1 p3) (TSEQ .c1 .c2 .W W'' W'''' p2 p4)
+Δ-exec Γ Γᵗ W .(W + tceval Γᵗ (Var X := e)) .(W + tceval Γᵗ (Var X := e))
+ .(Var X := e) (TASSIGN X n e .W) (TASSIGN .X n₁ .e .W) = refl
+Δ-exec Γ Γᵗ W .(W + (W' + W''')) .(W + (W'' + W''''))
+ .(c1 ¿ c2) (TSEQ c1 c2 .W W' W''' p1 p3) (TSEQ .c1 .c2 .W W'' W'''' p2 p4)
  with Δ-exec Γ Γᵗ W (W + W') (W + W'') c1 p1 p2
 ... | r with +-cancelˡ-≡ W r
 ... | refl
@@ -285,7 +287,9 @@ assign-sound Γ st S e W .(W + tceval st (Var S := e)) .W
 ... | rr with +-cancelˡ-≡ W rr
 ... | rm with +-cancelˡ-≡ W' rm
 ... | refl = refl
-Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ IF b THEN t ELSE e END + tbeval Γᵗ b)) .(W + (tceval Γᵗ IF b THEN t ELSE e END + tbeval Γᵗ b)) .(IF b THEN t ELSE e END) (TIF n1 b t e .W) (TIF n2 .b .t .e .W) = refl
+Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ IF b THEN t ELSE e END + tbeval Γᵗ b))
+  .(W + (tceval Γᵗ IF b THEN t ELSE e END + tbeval Γᵗ b))
+  .(IF b THEN t ELSE e END) (TIF n1 b t e .W) (TIF n2 .b .t .e .W) = refl
 
 
 skip-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
@@ -302,10 +306,41 @@ skip-exec-time Γ Γᵗ W1 W2 X1 X2 (TSKIP .W1) p2 | .(W1 + 0) | refl
 skip-exec-time Γ Γᵗ W1 W2 _ X2 (TSKIP .W1) (TSKIP .W2) | .(W1 + _) | refl | .(W2 + 0) with +-cancelˡ-≡ W2 eq2
 ... | refl = refl
 
+assign-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
+               → (Γᵗ : String → ℕ)
+               → ∀ (W1 W2 X1 X2 : ℕ)
+               → (S : String) → (e : Aexp {ℕ})
+               → (Γ , Γᵗ , W1 =[ Var S := e ]=> (W1 + X1))
+               → (Γ , Γᵗ , W2 =[ Var S := e ]=> (W2 + X2))
+               → X1 ≡ X2
+assign-exec-time Γ Γᵗ W1 W2 X1 X2 S e p1 p2 with (W1 + X1) in eq
+assign-exec-time Γ Γᵗ W1 W2 X1 X2 S e (TASSIGN .S n .e .W1) p2 |
+  .(W1 + tceval Γᵗ (Var S := e)) with +-cancelˡ-≡ W1 eq
+assign-exec-time Γ Γᵗ W1 W2 X1 X2 S e (TASSIGN .S n .e .W1) p2 |
+  .(W1 + tceval Γᵗ (Var S := e)) | refl with (W2 + X2) in eq2
+assign-exec-time Γ Γᵗ W1 W2 .(Γᵗ S + aeval Γᵗ e) X2 S e (TASSIGN .S n .e .W1)
+  (TASSIGN .S n₁ .e .W2) | .(W1 + tceval Γᵗ (Var S := e)) | refl |
+  .(W2 + tceval Γᵗ (Var S := e)) with +-cancelˡ-≡ W2 eq2
+assign-exec-time Γ Γᵗ W1 W2 .(Γᵗ S + aeval Γᵗ e) X2 S e (TASSIGN .S n .e .W1)
+  (TASSIGN .S n₁ .e .W2) | .(W1 + tceval Γᵗ (Var S := e)) | refl |
+  .(W2 + tceval Γᵗ (Var S := e)) | refl = refl 
+
+ife-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
+               → (Γᵗ : String → ℕ)
+               → ∀ (W1 W2 X1 X2 : ℕ)
+               → (b : Bexp {ℕ})
+               → (t e : Cmd {ℕ}) 
+               → (Γ , Γᵗ , W1 =[ ( IF b THEN t ELSE e END ) ]=> (W1 + X1))
+               → (Γ , Γᵗ , W2 =[ ( IF b THEN t ELSE e END ) ]=> (W2 + X2))
+               → X1 ≡ X2
+ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e p1 p2 with (W1 + X1) in eq1 |
+  (W2 + X2) in eq2
+ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIF n1 .b .t .e .W1) (TIF n2 .b .t .e .W2) | .(W1 + (tceval Γᵗ IF b THEN t ELSE e END + tbeval Γᵗ b)) | .(W2 + (tceval Γᵗ IF b THEN t ELSE e END + tbeval Γᵗ b)) rewrite +-cancelˡ-≡ W1 eq1
+  | +-cancelˡ-≡ W2 eq2 = refl
 
 -- command lemma: starting from any value the command c takes X amount
--- of time to result in the same execution time
--- TODO: Follow the above technique for all cases!
+-- of time to result in the same execution time TODO: Follow the above
+-- and below technique for all command cases!
 postulate eq-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
                → (Γᵗ : String → ℕ)
                → ∀ (c : Cmd {ℕ})
@@ -314,6 +349,38 @@ postulate eq-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
                → (Γ , Γᵗ , W2 =[ c ]=> (W2 + X2))
                → X1 ≡ X2
 -- eq-exec-time Γ Γᵗ c W1 W2 X1 X2 p1 p2 = {!!}
+
+seq-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
+               → (Γᵗ : String → ℕ)
+               → ∀ (W1 W2 X1 X2 : ℕ)
+               → (c1 c2 : Cmd {ℕ}) 
+               → (Γ , Γᵗ , W1 =[ ( c1 ¿ c2) ]=> (W1 + X1))
+               → (Γ , Γᵗ , W2 =[ ( c1 ¿ c2) ]=> (W2 + X2))
+               → X1 ≡ X2
+seq-exec-time Γ Γᵗ W1 W2 X1 X2 c1 c2 p1 p2 with (W1 + X1) in eq1
+  | (W2 + X2) in eq2
+seq-exec-time Γ Γᵗ W1 W2 X1 X2 c1 c2 (TSEQ .c1 .c2 .W1 W' W'' p1 p3)
+  (TSEQ .c1 .c2 .W2 W''' W'''' p2 p4)
+  | .(W1 + (W' + W'')) | .(W2 + (W''' + W''''))
+  rewrite +-cancelˡ-≡ W1 eq1 | +-cancelˡ-≡ W2 eq2
+  with eq-exec-time Γ Γᵗ c1 W1 W2 W' W''' p1 p2
+... | refl
+  rewrite 
+     +-comm W'''  W''
+     | +-comm W1 (W'' + W''')
+     | +-assoc W'' W'''  W1
+     | +-comm W''' W1
+     | +-comm W'' (W1 + W''')
+     | +-comm W'''  W''''
+     | +-comm W2 (W'''' + W''')
+     | +-assoc W'''' W'''  W2
+     | +-comm W''' W2
+     | +-comm W'''' (W2 + W''')
+   with (W1 + W''') | (W2 + W''')
+... | l | m
+   with eq-exec-time Γ Γᵗ c2 l m W'' W'''' p3 p4
+... | refl  = refl
+
 
 
 
