@@ -6,7 +6,8 @@ open import Relation.Binary.PropositionalEquality
 open import Data.String using (String)
 open import Data.Nat
 open import Data.Nat.Base using (_≤_)
-open import Data.Bool
+open import Data.Bool using (true ; false)
+open import Data.Bool.Base using (if_then_else_)
 open import Data.Maybe using (Maybe; just; nothing)
 open import Agda.Builtin.Unit
 open import Data.Empty
@@ -14,151 +15,12 @@ open import Relation.Nullary using (¬_)
 open import Data.Product using (_×_)
 open import Data.List
 open import Data.Nat.Properties
+open import Language
 
--- I separated this because of function calls
-data VarId : Set where
-  Var : (x : String) → VarId
-
--- This is the language of expressions
-data Aexp {A : Set} : Set where
-  _+`_ : ∀(x1 x2 : Aexp {A}) → Aexp
-  _-`_ : ∀(x1 x2 : Aexp {A}) → Aexp
-  _*`_ : ∀(x1 x2 : Aexp {A}) → Aexp
-  Avar : ∀(x : String) → Aexp
-  Anum : ∀(x : A) → Aexp
-  -- Type A should be comparable to 0
-  -- _/_ : ∀(x1 x2 : A) → (x2 ≡ 0) → Aexp
-
--- Special - for ℕ
-_~-~_ : (a b : ℕ) → ℕ
-zero ~-~ b = 0
-suc a ~-~ b = a ~-~ b
-
--- Evaluation of Arithexp
-aeval : (st : String → ℕ) → (exp : Aexp {ℕ}) → ℕ
-aeval st (e +` e₁) = aeval st e + aeval st e₁
-aeval st (e -` e₁) = aeval st e ~-~ aeval st e₁
-aeval st (e *` e₁) = aeval st e * aeval st e₁
-aeval st (Avar x) = st x
-aeval st (Anum x) = x
-
--- This is the language of boolean expressions
-data Bexp {A : Set} : Set where
-  TRUE : Bexp
-  FALSE : Bexp
-  _<`_ : ∀ (x1 x2 : Aexp {A}) → Bexp
-  _>`_ : ∀ (x1 x2 : Aexp {A}) → Bexp
-  _≤`_ : ∀ (x1 x2 : Aexp {A}) → Bexp
-  _≥`_ : ∀ (x1 x2 : Aexp {A}) → Bexp
-  _≡`_ : ∀ (x1 x2 : Aexp {A}) → Bexp
-  ¬`_ : ∀ (b : Bexp {A}) → Bexp
-  _&&`_ : ∀ (b1 b2 : Bexp {A}) → Bexp
-  _||`_ : ∀ (b1 b2 : Bexp {A}) → Bexp
-
-
--- Bool evaluation for ℕ
-beval : (st : String → ℕ) → (b : Bexp {ℕ}) → Bool
-beval st TRUE = true
-beval st FALSE = false
-beval st (x1 <` x2) = let ql = aeval st x1 in
-                       let qr = aeval st x2 in
-                       ((not ((ql ≤ᵇ qr) ∧ (qr ≤ᵇ ql))) ∧ (ql ≤ᵇ qr))
-beval st (x1 >` x2) = let ql = aeval st x1 in
-                       let qr = aeval st x2 in
-                       ((not ((ql ≤ᵇ qr) ∧ (qr ≤ᵇ ql))) ∧ (qr ≤ᵇ ql))
-beval st (x1 ≤` x2) = let l = aeval st x1 in
-                       let r = aeval st x2 in
-                       l ≤ᵇ r
-beval st (x1 ≥` x2) = let l = aeval st x1 in
-                       let r = aeval st x2 in
-                       r ≤ᵇ l
-beval st (x1 ≡` x2) = let l = aeval st x1 in
-                       let r = aeval st x2 in
-                       (l ≤ᵇ r) ∧ (r ≤ᵇ l)
-beval st (¬` b) = not (beval st b)
-beval st (b &&` b₁) = beval st b ∧ beval st b₁
-beval st (b ||` b₁) = beval st b ∨ beval st b₁
-
-
-data ATuple : Set where
-  Arg : (v : String) → ATuple
-  _,`_ : (f : ATuple) → (n : ATuple) → ATuple
-
-data RTuple : Set where
-  Ret : (v : String) → RTuple
-  _,`_ : (f : RTuple) → (n : RTuple) → RTuple
-
--- Name of functions are in different namespace
-data FuncCall {A : Set} : Set where
-  -- Calling a function
-  <_>:=_<_> : (ret : RTuple) → (f : String) →
-              (args : ATuple) → FuncCall
-  -- XXX: Note that the below allows writing code like
-  -- this: F()||F()//F()
-  _||`_ : (l r : FuncCall {A}) → FuncCall
-  _//`_ : (l r : FuncCall {A}) → FuncCall
-
--- This is the command language that we have
-data Cmd {A : Set} : Set where
-  SKIP : Cmd
-  _:=_ : (l : VarId) → (r : Aexp {A}) → Cmd
-  _¿_ : (c1 c2 : Cmd {A}) → Cmd
-  IF_THEN_ELSE_END : (b : Bexp {A}) → (t : Cmd {A}) →
-                   (c : Cmd {A}) → Cmd
-  WHILE_DO_END : (b : Bexp {A}) → (bo : Cmd {A}) → Cmd
-
-  -- This makes calling the function a command
-  EXEC : FuncCall {A} → Cmd
-
--- This is defining a function
--- This should give state of type (f → Maybe (Ret strings, args string, Cmd))
--- This should be an eval function, not a relation
--- This will be called from funccall and go from st => st'
-data FuncDef {A : Set} : Set where
-  -- Define a function/thread
-  DEF_<_>⇒<_>:_END : (f : String) → (ATuple)
-                   → (RTuple) → (c : Cmd {A}) → FuncDef
-
--- Toplevel
--- This should start from MAIN
--- This should be an topeval function KP => st
-data Top {A : Set} : Set where
-  MAIN:_END :  (c : Cmd {A}) → Top
-  _¿_ : FuncDef {A} → (a : Top {A}) → Top
-  
-
-infix 22 _:=_
-infixl 21 _¿_ 
-infixl 20 _||`_
-infixl 20 _//`_
-infixl 23 _-`_
-infixl 23 _+`_
-infixl 24 _*`_
-infixl 25 _,`_                  -- Highest precedence and left assoc
-
--- Making the tuple type needed to hold the program
-data ProgTuple {A : Set} : Set where
-  _,_,_ : (a : ATuple) → (r : RTuple) → (c : Cmd {A}) → ProgTuple
-
-
--- Getting stuff from the Progtuple
-getProgCmd : {A : Set} → (p : Maybe (ProgTuple {A})) → Cmd {A}
-getProgCmd (just (a , r , c)) = c
-getProgCmd nothing = SKIP       -- Dangerous
-
-getProgArgs : {A : Set} → (p : Maybe (ProgTuple {A})) → ATuple 
-getProgArgs (just (a , r , c)) = a
-getProgArgs nothing = Arg "VOID"
-
-getProgRets : {A : Set} → (p : Maybe (ProgTuple {A})) → RTuple 
-getProgRets (just (a , r , c)) = r
-getProgRets nothing = Ret "VOID"
-
--- The max function needed for WCET
 max : ∀ (m n : ℕ) → ℕ
-max m n with m Data.Nat.≤ᵇ n
-... | false = n
-... | true = m
+max m n with (m ≤? n)
+... | false Relation.Nullary.because _ = m
+... | true Relation.Nullary.because _ = n
 
 taeval : (Γ : (String → ℕ)) → (Aexp {ℕ}) → ℕ
 taeval Γ (a +` a₁) = taeval Γ a + taeval Γ a₁ + (Γ "+")
@@ -210,10 +72,23 @@ data _,_,_=[_]=>_ (Γ : (String → Maybe (ProgTuple {ℕ}))) (st : String → �
         --------------------------------------------
         Γ , st ,  W =[ c1 ¿ c2 ]=> (W + (W' + W''))
 
- TIF : ∀ (n1 : ℕ) → (b : Bexp {ℕ}) → (t e : Cmd {ℕ}) → ∀ (W : ℕ) →
-       -----------------------------------------------------------
-        Γ , st , W =[ (IF b THEN t ELSE e END) ]=>
-          (W + (tceval st (IF b THEN t ELSE e END) + (tbeval st b)))
+ -- TIF : ∀ (n1 : ℕ) → (b : Bexp {ℕ}) → (t e : Cmd {ℕ}) → ∀ (W : ℕ) →
+ --       -----------------------------------------------------------
+ --        Γ , st , W =[ (IF b THEN t ELSE e END) ]=>
+ --          (W + (tceval st (IF b THEN t ELSE e END) + (tbeval st b)))
+
+ -- XXX: Hack, st contains both exec time and state!
+ TIFT : (n1 : ℕ) → (b : Bexp {ℕ}) →
+        (t e : Cmd {ℕ}) → ∀ (W : ℕ)
+        → (beval st b ≡ true)
+        → Γ , st , W =[ (IF b THEN t ELSE e END) ]=>
+          (W + (tceval st t + (tbeval st b)))
+
+ TIFE : (n1 : ℕ) → (b : Bexp {ℕ}) →
+        (t e : Cmd {ℕ}) → ∀ (W : ℕ)
+        → (beval st b ≡ false)
+        → Γ , st , W =[ (IF b THEN t ELSE e END) ]=>
+          (W + (tceval st e + (tbeval st b)))
 
 -- The worst case time semantics
 -- data _,_=[_]=>_ (Γ : String → Maybe (ProgTuple {ℕ})) :
@@ -242,12 +117,12 @@ data _,_,_=[_]=>_ (Γ : (String → Maybe (ProgTuple {ℕ}))) (st : String → �
  --       → Γ , st =[ EXEC f ]=> st'
         
 -- Doing the evaluation of top
-evalProg : {A : Set} → (p : Top {A}) →
-           (st : String → Maybe (ProgTuple {A})) →
-           (String → Maybe (ProgTuple {A}))
-evalProg MAIN: c END st = (StoreP st "MAIN" (Arg "void" , Ret "void" , c))
-evalProg (DEF f < x >⇒< x1 >: c END ¿ p) st =
-              StoreP (evalProg p st) f (x , x1 , c)
+-- evalProg : {A : Set} → (p : Top {A}) →
+--            (st : String → Maybe (ProgTuple {A})) →
+--            (String → Maybe (ProgTuple {A}))
+-- evalProg MAIN: c END st = (StoreP st "MAIN" (Arg "void" , Ret "void" , c))
+-- evalProg (DEF f < x >⇒< x1 >: c END ¿ p) st =
+--               StoreP (evalProg p st) f (x , x1 , c)
 
 
 -- Soundness theorem for SKIP WCET rule
@@ -287,9 +162,12 @@ assign-sound Γ st S e W .(W + tceval st (Var S := e)) .W
 ... | rr with +-cancelˡ-≡ W rr
 ... | rm with +-cancelˡ-≡ W' rm
 ... | refl = refl
-Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ IF b THEN t ELSE e END + tbeval Γᵗ b))
-  .(W + (tceval Γᵗ IF b THEN t ELSE e END + tbeval Γᵗ b))
-  .(IF b THEN t ELSE e END) (TIF n1 b t e .W) (TIF n2 .b .t .e .W) = refl
+Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ t + tbeval Γᵗ b)) .(W + (tceval Γᵗ t + tbeval Γᵗ b)) IF b THEN t ELSE e END (TIFT n2 .b .t .e .W x) (TIFT n1 .b .t .e .W x₁) = refl
+Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ e + tbeval Γᵗ b)) .(W + (tceval Γᵗ t + tbeval Γᵗ b)) IF b THEN t ELSE e END (TIFE n2 .b .t .e .W x) (TIFT n1 .b .t .e .W x₁)
+  = ⊥-elim (contradiction-lemma b Γᵗ x₁ x)
+Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ t + tbeval Γᵗ b)) .(W + (tceval Γᵗ e + tbeval Γᵗ b)) IF b THEN t ELSE e END (TIFT n2 .b .t .e .W x) (TIFE n1 .b .t .e .W x₁)
+  = ⊥-elim (contradiction-lemma b Γᵗ x x₁)
+Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ e + tbeval Γᵗ b)) .(W + (tceval Γᵗ e + tbeval Γᵗ b)) IF b THEN t ELSE e END (TIFE n2 .b .t .e .W x) (TIFE n1 .b .t .e .W x₁) = refl
 
 
 skip-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
@@ -303,7 +181,8 @@ skip-exec-time Γ Γᵗ W1 W2 X1 X2 (TSKIP .W1) p2 | .(W1 + 0)
   with +-cancelˡ-≡ W1 eq1
 skip-exec-time Γ Γᵗ W1 W2 X1 X2 (TSKIP .W1) p2 | .(W1 + 0) | refl
   with (W2 + X2) in eq2
-skip-exec-time Γ Γᵗ W1 W2 _ X2 (TSKIP .W1) (TSKIP .W2) | .(W1 + _) | refl | .(W2 + 0) with +-cancelˡ-≡ W2 eq2
+skip-exec-time Γ Γᵗ W1 W2 _ X2 (TSKIP .W1) (TSKIP .W2)
+  | .(W1 + _) | refl | .(W2 + 0) with +-cancelˡ-≡ W2 eq2
 ... | refl = refl
 
 assign-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
@@ -330,17 +209,35 @@ ife-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
                → ∀ (W1 W2 X1 X2 : ℕ)
                → (b : Bexp {ℕ})
                → (t e : Cmd {ℕ}) 
+               -- XXX: Note that these two are the same statement here
                → (Γ , Γᵗ , W1 =[ ( IF b THEN t ELSE e END ) ]=> (W1 + X1))
                → (Γ , Γᵗ , W2 =[ ( IF b THEN t ELSE e END ) ]=> (W2 + X2))
                → X1 ≡ X2
-ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e p1 p2 with (W1 + X1) in eq1 |
-  (W2 + X2) in eq2
-ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIF n1 .b .t .e .W1) (TIF n2 .b .t .e .W2) | .(W1 + (tceval Γᵗ IF b THEN t ELSE e END + tbeval Γᵗ b)) | .(W2 + (tceval Γᵗ IF b THEN t ELSE e END + tbeval Γᵗ b)) rewrite +-cancelˡ-≡ W1 eq1
+ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e p1 p2
+  with (W1 + X1) in eq1 | (W2 + X2) in eq2
+ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFT n1 .b .t .e .W1 x)
+  (TIFT n2 .b .t .e .W2 x₁) | .(W1 + (tceval Γᵗ t + tbeval Γᵗ b))
+  | .(W2 + (tceval Γᵗ t + tbeval Γᵗ b)) rewrite +-cancelˡ-≡ W1 eq1
+  | +-cancelˡ-≡ W2 eq2 = refl
+ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFT n1 .b .t .e .W1 x)
+  (TIFE n2 .b .t .e .W2 x₁)
+  | .(W1 + (tceval Γᵗ t + tbeval Γᵗ b))
+  | .(W2 + (tceval Γᵗ e + tbeval Γᵗ b)) = ⊥-elim (contradiction-lemma b Γᵗ x x₁)
+ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFE n1 .b .t .e .W1 x)
+  (TIFT n2 .b .t .e .W2 x₁)
+  | .(W1 + (tceval Γᵗ e + tbeval Γᵗ b))
+  | .(W2 + (tceval Γᵗ t + tbeval Γᵗ b)) = ⊥-elim (contradiction-lemma b Γᵗ x₁ x)
+ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFE n1 .b .t .e .W1 x)
+  (TIFE n2 .b .t .e .W2 x₁)
+  | .(W1 + (tceval Γᵗ e + tbeval Γᵗ b))
+  | .(W2 + (tceval Γᵗ e + tbeval Γᵗ b)) rewrite +-cancelˡ-≡ W1 eq1
   | +-cancelˡ-≡ W2 eq2 = refl
 
 -- command lemma: starting from any value the command c takes X amount
 -- of time to result in the same execution time TODO: Follow the above
 -- and below technique for all command cases!
+
+-- XXX: I will do this at the end because other commands remain.
 postulate eq-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
                → (Γᵗ : String → ℕ)
                → ∀ (c : Cmd {ℕ})
@@ -403,47 +300,48 @@ seq-sound Γ Γᵗ c1 c2 W X1 X2 .(W + (W' + W''))
 ... | rl with eq-exec-time Γ Γᵗ c2 rl W W'' X2 cmd₁ p2
 ... | refl = refl
 
+
+-- Helping lemma for ife
+plus-≤ : ∀ (m n p : ℕ) → (m ≤ n) → (m + p) ≤ (n + p)
+plus-≤ .zero n p z≤n = m≤n+m p n
+plus-≤ .(suc _) .(suc _) p (s≤s {m} {n} q) with plus-≤ m n p q
+... | H0 = s≤s H0
+
+plus-> : ∀ (m n p : ℕ) → ((m ≤ n) → ⊥) → (n + p) ≤ (m + p)
+plus-> m n p q = {!!}
+
 -- Soundness theorem for If-else WCET rule
 ife-sound : (Γ : String → Maybe (ProgTuple {ℕ}))
             → (Γᵗ : String → ℕ)
             → (t e : Cmd {ℕ})
             → (b : Bexp {ℕ})
-            → (W X1 X2 W' : ℕ)
+            → (W W' : ℕ)
             → (cmd : Γ , Γᵗ , W =[ (IF b THEN t ELSE e END) ]=> W')
-            → (tceval Γᵗ t ≡ X1)
-            → (tceval Γᵗ e ≡ X2)
-            → (W' ≡ W + ((max X1 X2) + (tbeval Γᵗ b)))
-ife-sound Γ Γᵗ t e b W .(tceval Γᵗ t) .(tceval Γᵗ e)
-  .(W + (tceval Γᵗ IF b THEN t ELSE e END + tbeval Γᵗ b))
-  (TIF n1 .b .t .e .W) refl refl = refl
+            → (W' ≤ W + ((max (tceval Γᵗ t) (tceval Γᵗ e)) + (tbeval Γᵗ b)))
+ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ t + tbeval Γᵗ b)) (TIFT n1 .b .t .e .W x)
+ with (tceval Γᵗ t) ≤? (tceval Γᵗ e)
+... | false Relation.Nullary.because Relation.Nullary.ofⁿ ¬p = ≤-refl
+... | true Relation.Nullary.because Relation.Nullary.ofʸ p
+  with (tceval Γᵗ t) | (tceval Γᵗ e) | (tbeval Γᵗ b)
+... | m | n | q rewrite +-comm W (m + q)
+    | +-assoc m q W
+    | +-comm W (n + q)
+    | +-assoc n q W = plus-≤ m n (q + W) p
+ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ e + tbeval Γᵗ b)) (TIFE n1 .b .t .e .W x) with (tceval Γᵗ t) ≤? (tceval Γᵗ e)
+ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
+  (TIFE n1 .b .t .e .W x)
+  | false Relation.Nullary.because Relation.Nullary.ofⁿ ¬p
+  with (tceval Γᵗ t) | (tceval Γᵗ e) | (tbeval Γᵗ b)
+... | m | n | q rewrite +-comm W (n + q)
+    | +-assoc n q W
+    | +-comm W (m + q)
+    | +-assoc m q W = plus-> m n (q + W) ¬p
+ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
+  (TIFE n1 .b .t .e .W x)
+  | true Relation.Nullary.because Relation.Nullary.ofʸ p = ≤-refl
 
 -- Now do loop here
 
 -- Then do exec statement for 1 function call
 
--- Then exec statement for || and //
 
--- The evaluation time for all commands XXX: Not being used right now,
--- but maybe later I can change everything to a relation.
-data _⇓_ : Cmd {ℕ} → ℕ → Set where
-  NSKIP : SKIP ⇓ 0
-
-  NASSIGN : ∀ (X : String) → (e : Aexp {ℕ})
-            → (n : ℕ)
-            → (Var X := e) ⇓ n
-
-  NSEQ : ∀ (n1 n2 : ℕ) → (c1 c2 : Cmd {ℕ})
-         → (c1 ⇓ n1) → (c2 ⇓ n2)
-         → (c2 ¿ c2) ⇓ (n1 + n2)
-
-  NIFT : (st : (String → ℕ)) → ∀ (n1 : ℕ) → (b : Bexp {ℕ}) →
-        (t e : Cmd {ℕ}) → ∀ (W : ℕ)
-        → beval st b ≡ true
-        → t ⇓ n1
-        → (IF b THEN t ELSE e END) ⇓ n1
-
-  NIFE : (st : (String → ℕ)) → ∀ (n1 : ℕ) → (b : Bexp {ℕ}) →
-        (t e : Cmd {ℕ}) → ∀ (W : ℕ)
-        → beval st b ≡ false
-        → e ⇓ n1
-        → (IF b THEN t ELSE e END) ⇓ n1
