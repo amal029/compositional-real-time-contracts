@@ -52,7 +52,7 @@ tceval Γ (l := r) with l
 ... | Var x = Γ x + (aeval Γ r)
 tceval Γ (c ¿ c₁) = (tceval Γ c) + (tceval Γ c₁)
 tceval Γ IF b THEN c ELSE c₁ END = max (tceval Γ c) (tceval Γ c₁)
-tceval Γ WHILE b DO c END = 0 -- FIXME: Fix this later
+tceval Γ WHILE b DO c END = ((Γ "loop-count") * (tceval Γ c)) + (tbeval Γ b)
 tceval Γ (EXEC x) = 0 -- FIXME: Fix this later
 
 -- Semantics of time from here
@@ -72,11 +72,6 @@ data _,_,_=[_]=>_ (Γ : (String → Maybe (ProgTuple {ℕ}))) (st : String → �
         --------------------------------------------
         Γ , st ,  W =[ c1 ¿ c2 ]=> (W + (W' + W''))
 
- -- TIF : ∀ (n1 : ℕ) → (b : Bexp {ℕ}) → (t e : Cmd {ℕ}) → ∀ (W : ℕ) →
- --       -----------------------------------------------------------
- --        Γ , st , W =[ (IF b THEN t ELSE e END) ]=>
- --          (W + (tceval st (IF b THEN t ELSE e END) + (tbeval st b)))
-
  -- XXX: Hack, st contains both exec time and state!
  TIFT : (n1 : ℕ) → (b : Bexp {ℕ}) →
         (t e : Cmd {ℕ}) → ∀ (W : ℕ)
@@ -88,27 +83,26 @@ data _,_,_=[_]=>_ (Γ : (String → Maybe (ProgTuple {ℕ}))) (st : String → �
         (t e : Cmd {ℕ}) → ∀ (W : ℕ)
         → (beval st b ≡ false)
         → Γ , st , W =[ (IF b THEN t ELSE e END) ]=>
+        -- XXX: In the paper put this:
+        -- Γ , st , W =[ t ]=> W + W'
+        -- Γ , st , W =[ e ]=> W + W''
+        -- XXX: using tceval here is a shrot cut
           (W + (tceval st e + (tbeval st b)))
 
--- The worst case time semantics
--- data _,_=[_]=>_ (Γ : String → Maybe (ProgTuple {ℕ})) :
---                 (String →  ℕ) →
---                 Cmd {ℕ} → (String →  ℕ) →
---                 Set where
+ TLF :  (b : Bexp {ℕ}) → (c : Cmd {ℕ}) →
+        beval st b ≡ false →
+        ∀ (W : ℕ) →
+        -----------------------------------------------------------
+        Γ , st , W =[ (WHILE b DO c END) ]=>
+        (W + (0 * (tceval st c)) + (tbeval st b))
 
---  CLF : (st : (String →  ℕ)) →
---        (b : Bexp {ℕ}) → (c : Cmd {ℕ}) →
---         beval st b ≡ false →
---         -----------------------------------------------------------
---         Γ , st =[ (WHILE b DO c END) ]=> st
-
---  CLT :  (st st' st'' : (String →  ℕ)) →
---         (b : Bexp {ℕ}) → (c : Cmd {ℕ}) →
---         beval st b ≡ true →
---         Γ , st =[ c ]=> st' →
---         Γ , st' =[ (WHILE b DO c END) ]=> st'' →
---         -----------------------------------------------------------
---         Γ , st =[ (WHILE b DO c END) ]=> st''
+ TLT :  (b : Bexp {ℕ}) → (c : Cmd {ℕ}) →
+        beval st b ≡ true → ∀ (W : ℕ) →
+        -----------------------------------------------------------
+        -- XXX: In the paper put this:
+        -- Γ , st , W =[ c ]=> W + W'
+        Γ , st , W =[ (WHILE b DO c END) ]=>
+        (W + ((st "loop-count") * (tceval st c)) + (tbeval st b))
 
  -- XXX: Done.
  -- CEX : ∀ (f : FuncCall {ℕ}) → ∀ (st st' : (String → ℕ))
@@ -116,15 +110,6 @@ data _,_,_=[_]=>_ (Γ : (String → Maybe (ProgTuple {ℕ}))) (st : String → �
  --       -----------------------------------------------------------
  --       → Γ , st =[ EXEC f ]=> st'
         
--- Doing the evaluation of top
--- evalProg : {A : Set} → (p : Top {A}) →
---            (st : String → Maybe (ProgTuple {A})) →
---            (String → Maybe (ProgTuple {A}))
--- evalProg MAIN: c END st = (StoreP st "MAIN" (Arg "void" , Ret "void" , c))
--- evalProg (DEF f < x >⇒< x1 >: c END ¿ p) st =
---               StoreP (evalProg p st) f (x , x1 , c)
-
-
 -- Soundness theorem for SKIP WCET rule
 skip-sound : (Γ : String → Maybe (ProgTuple {ℕ}))
            → (Γᵗ : String → ℕ)  -- map of labels to execution times
@@ -162,13 +147,33 @@ assign-sound Γ st S e W .(W + tceval st (Var S := e)) .W
 ... | rr with +-cancelˡ-≡ W rr
 ... | rm with +-cancelˡ-≡ W' rm
 ... | refl = refl
-Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ t + tbeval Γᵗ b)) .(W + (tceval Γᵗ t + tbeval Γᵗ b)) IF b THEN t ELSE e END (TIFT n2 .b .t .e .W x) (TIFT n1 .b .t .e .W x₁) = refl
-Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ e + tbeval Γᵗ b)) .(W + (tceval Γᵗ t + tbeval Γᵗ b)) IF b THEN t ELSE e END (TIFE n2 .b .t .e .W x) (TIFT n1 .b .t .e .W x₁)
+Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ t + tbeval Γᵗ b))
+  .(W + (tceval Γᵗ t + tbeval Γᵗ b)) IF b THEN t ELSE e END
+  (TIFT n2 .b .t .e .W x) (TIFT n1 .b .t .e .W x₁) = refl
+Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
+  .(W + (tceval Γᵗ t + tbeval Γᵗ b)) IF b THEN t ELSE e END
+  (TIFE n2 .b .t .e .W x) (TIFT n1 .b .t .e .W x₁)
   = ⊥-elim (contradiction-lemma b Γᵗ x₁ x)
-Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ t + tbeval Γᵗ b)) .(W + (tceval Γᵗ e + tbeval Γᵗ b)) IF b THEN t ELSE e END (TIFT n2 .b .t .e .W x) (TIFE n1 .b .t .e .W x₁)
+Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ t + tbeval Γᵗ b))
+  .(W + (tceval Γᵗ e + tbeval Γᵗ b)) IF b THEN t ELSE e END
+  (TIFT n2 .b .t .e .W x) (TIFE n1 .b .t .e .W x₁)
   = ⊥-elim (contradiction-lemma b Γᵗ x x₁)
-Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ e + tbeval Γᵗ b)) .(W + (tceval Γᵗ e + tbeval Γᵗ b)) IF b THEN t ELSE e END (TIFE n2 .b .t .e .W x) (TIFE n1 .b .t .e .W x₁) = refl
-
+Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
+  .(W + (tceval Γᵗ e + tbeval Γᵗ b)) IF b THEN t ELSE e END
+  (TIFE n2 .b .t .e .W x) (TIFE n1 .b .t .e .W x₁) = refl
+Δ-exec Γ Γᵗ W .(W + 0 * tceval Γᵗ c + tbeval Γᵗ b)
+  .(W + 0 * tceval Γᵗ c + tbeval Γᵗ b) WHILE b DO c END (TLF .b .c x .W)
+  (TLF .b .c x₁ .W) = refl
+Δ-exec Γ Γᵗ W .(W + Γᵗ "loop-count" * tceval Γᵗ c + tbeval Γᵗ b)
+  .(W + 0 * tceval Γᵗ c + tbeval Γᵗ b) WHILE b DO c END (TLT .b .c x .W)
+  (TLF .b .c x₁ .W) = ⊥-elim (contradiction-lemma b Γᵗ x x₁)
+Δ-exec Γ Γᵗ W .(W + 0 * tceval Γᵗ c + tbeval Γᵗ b)
+  .(W + Γᵗ "loop-count" * tceval Γᵗ c + tbeval Γᵗ b) WHILE b DO c END
+  (TLF .b .c x .W) (TLT .b .c x₁ .W) =
+  ⊥-elim (contradiction-lemma b Γᵗ x₁ x)
+Δ-exec Γ Γᵗ W .(W + Γᵗ "loop-count" * tceval Γᵗ c + tbeval Γᵗ b)
+  .(W + Γᵗ "loop-count" * tceval Γᵗ c + tbeval Γᵗ b) WHILE b DO c END
+    (TLT .b .c x .W) (TLT .b .c x₁ .W) = refl
 
 skip-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
                → (Γᵗ : String → ℕ)
@@ -222,11 +227,13 @@ ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFT n1 .b .t .e .W1 x)
 ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFT n1 .b .t .e .W1 x)
   (TIFE n2 .b .t .e .W2 x₁)
   | .(W1 + (tceval Γᵗ t + tbeval Γᵗ b))
-  | .(W2 + (tceval Γᵗ e + tbeval Γᵗ b)) = ⊥-elim (contradiction-lemma b Γᵗ x x₁)
+  | .(W2 + (tceval Γᵗ e + tbeval Γᵗ b))
+  = ⊥-elim (contradiction-lemma b Γᵗ x x₁)
 ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFE n1 .b .t .e .W1 x)
   (TIFT n2 .b .t .e .W2 x₁)
   | .(W1 + (tceval Γᵗ e + tbeval Γᵗ b))
-  | .(W2 + (tceval Γᵗ t + tbeval Γᵗ b)) = ⊥-elim (contradiction-lemma b Γᵗ x₁ x)
+  | .(W2 + (tceval Γᵗ t + tbeval Γᵗ b))
+  = ⊥-elim (contradiction-lemma b Γᵗ x₁ x)
 ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFE n1 .b .t .e .W1 x)
   (TIFE n2 .b .t .e .W2 x₁)
   | .(W1 + (tceval Γᵗ e + tbeval Γᵗ b))
@@ -279,8 +286,6 @@ seq-exec-time Γ Γᵗ W1 W2 X1 X2 c1 c2 (TSEQ .c1 .c2 .W1 W' W'' p1 p3)
 ... | refl  = refl
 
 
-
-
 -- Soundness theorem for Seq WCET rule
 seq-sound : (Γ : String → Maybe (ProgTuple {ℕ}))
             → (Γᵗ : String → ℕ)
@@ -328,7 +333,8 @@ ife-sound : (Γ : String → Maybe (ProgTuple {ℕ}))
             → (W W' : ℕ)
             → (cmd : Γ , Γᵗ , W =[ (IF b THEN t ELSE e END) ]=> W')
             → (W' ≤ W + ((max (tceval Γᵗ t) (tceval Γᵗ e)) + (tbeval Γᵗ b)))
-ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ t + tbeval Γᵗ b)) (TIFT n1 .b .t .e .W x)
+ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ t + tbeval Γᵗ b))
+  (TIFT n1 .b .t .e .W x)
  with (tceval Γᵗ t) ≤? (tceval Γᵗ e)
 ... | false Relation.Nullary.because Relation.Nullary.ofⁿ ¬p = ≤-refl
 ... | true Relation.Nullary.because Relation.Nullary.ofʸ p
@@ -337,7 +343,8 @@ ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ t + tbeval Γᵗ b)) (TIFT n1 .b 
     | +-assoc m q W
     | +-comm W (n + q)
     | +-assoc n q W = plus-≤ m n (q + W) p
-ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ e + tbeval Γᵗ b)) (TIFE n1 .b .t .e .W x) with (tceval Γᵗ t) ≤? (tceval Γᵗ e)
+ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
+  (TIFE n1 .b .t .e .W x) with (tceval Γᵗ t) ≤? (tceval Γᵗ e)
 ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
   (TIFE n1 .b .t .e .W x)
   | false Relation.Nullary.because Relation.Nullary.ofⁿ ¬p
@@ -350,7 +357,31 @@ ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
   (TIFE n1 .b .t .e .W x)
   | true Relation.Nullary.because Relation.Nullary.ofʸ p = ≤-refl
 
+-- Helper for loop
+loop-helper : ∀ (l g : ℕ) → (l ≤′ (g + l))
+loop-helper l zero = ≤′-refl
+loop-helper l (suc g) = ≤′-step (loop-helper l g)
+
 -- Now do loop here
+-- XXX: Using well founded recirsion here
+loop-sound : (Γ : String → Maybe (ProgTuple {ℕ}))
+            → (Γᵗ : String → ℕ)
+            → (c : Cmd {ℕ})
+            → (b : Bexp {ℕ})
+            → (W W' : ℕ)
+            → (cmd : Γ , Γᵗ , W =[ (WHILE b DO c END) ]=> W')
+            → (W' ≤′ W + ((Γᵗ "loop-count") * (tceval Γᵗ c)) + (tbeval Γᵗ b))
+loop-sound Γ Γᵗ c b W .(W + 0 * tceval Γᵗ c + tbeval Γᵗ b) (TLF .b .c x .W)
+  with (Γᵗ "loop-count")
+... | zero = ≤′-refl
+... | suc u rewrite +-comm W 0
+  with (tbeval Γᵗ b) | (tceval Γᵗ c)
+... | m | q rewrite +-comm W (q + u * q)
+    | +-assoc (q + u * q) W m
+  with (W + m) | (q + u * q)
+... | l | g = loop-helper l g
+loop-sound Γ Γᵗ c b W
+  .(W + Γᵗ "loop-count" * tceval Γᵗ c + tbeval Γᵗ b) (TLT .b .c x .W) = ≤′-refl
 
 -- Then do exec statement for 1 function call
 
