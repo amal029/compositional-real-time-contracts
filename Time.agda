@@ -51,7 +51,7 @@ tceval Γ SKIP = 0
 tceval Γ (l := r) with l
 ... | Var x = Γ x + (aeval Γ r)
 tceval Γ (c ¿ c₁) = (tceval Γ c) + (tceval Γ c₁)
-tceval Γ IF b THEN c ELSE c₁ END = max (tceval Γ c) (tceval Γ c₁)
+tceval Γ IF b THEN c ELSE c₁ END = max (tceval Γ c) (tceval Γ c₁) + (tbeval Γ b)
 tceval Γ WHILE b DO c END = ((Γ "loop-count") * (tceval Γ c)) + (tbeval Γ b)
 tceval Γ (EXEC x) = 0 -- FIXME: Fix this later
 
