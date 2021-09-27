@@ -307,8 +307,18 @@ plus-≤ .zero n p z≤n = m≤n+m p n
 plus-≤ .(suc _) .(suc _) p (s≤s {m} {n} q) with plus-≤ m n p q
 ... | H0 = s≤s H0
 
+≤-rela1 : ∀ (m n : ℕ) → ¬ (m ≤ n) → (n < m)
+≤-rela1 zero n p = ⊥-elim (p z≤n)
+≤-rela1 (suc m) zero p = s≤s z≤n
+≤-rela1 (suc m) (suc n) p = s≤s (≤-rela1 m n (λ z → p (s≤s z)))
+
+≤-rela2 : ∀ (m n : ℕ) → (suc n ≤ m) → (n ≤ m)
+≤-rela2 m n p with n≤1+n n
+... | q = ≤-trans q p
+
 plus-> : ∀ (m n p : ℕ) → ((m ≤ n) → ⊥) → (n + p) ≤ (m + p)
-plus-> m n p q = {!!}
+plus-> m n p q with ≤-rela1 m n q
+... | r = plus-≤ n m p (≤-rela2 m n r)
 
 -- Soundness theorem for If-else WCET rule
 ife-sound : (Γ : String → Maybe (ProgTuple {ℕ}))
