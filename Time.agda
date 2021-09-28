@@ -16,6 +16,7 @@ open import Data.Product using (_×_)
 open import Data.List
 open import Data.Nat.Properties
 open import Language
+open import Function.Base using (_$_)
 
 max : ∀ (m n : ℕ) → ℕ
 max m n with (m ≤? n)
@@ -522,10 +523,11 @@ func-sound : (Γ : String → Maybe (TProgTuple {ℕ})) → ∀ (Γᵗ : String 
              → ∀ (fname : String) → ∀ (W W' : ℕ)
              → Γ , Γᵗ , W =[ < getProgRetsT (Γ fname) >:=
                              fname < getProgArgsT (Γ fname) > ]=>ᶠ W'
-             → W' ≡ (W + ((numargs (getProgArgsT (Γ fname))) * (Γᵗ "arg-copy"))
+             → W' ≡ (W + ((numargs $ getProgArgsT $ (Γ fname)) * (Γᵗ "arg-copy"))
                     + (getProgTimeT (Γ fname))
-                    + ((numrets (getProgRetsT (Γ fname))) * (Γᵗ "ret-copy")))
-func-sound Γ Γᵗ fname W .(W + W' + getProgTimeT (Γ fname) + W''') (Base .fname .W W' .(getProgTimeT (Γ fname)) W''' x refl x₁ x₂)
+                    + ((numrets $ getProgRetsT $ (Γ fname)) * (Γᵗ "ret-copy")))
+func-sound Γ Γᵗ fname W .(W + W' + getProgTimeT (Γ fname) + W''')
+  (Base .fname .W W' .(getProgTimeT (Γ fname)) W''' x refl x₁ x₂)
   with args-sound Γᵗ (getProgArgsT (Γ fname)) W (W + W') x
        | rets-sound Γᵗ (getProgRetsT (Γ fname))
          (W + W' + getProgTimeT (Γ fname))
