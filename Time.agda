@@ -55,70 +55,182 @@ tceval Γ IF b THEN c ELSE c₁ END = max (tceval Γ c) (tceval Γ c₁) + (tbev
 tceval Γ WHILE b DO c END = ((Γ "loop-count") * (tceval Γ c)) + (tbeval Γ b)
 tceval Γ (EXEC x) = 0 -- FIXME: Fix this later
 
--- Semantics of time from here
-data _,_,_=[_]=>_ (Γ : (String → Maybe (ProgTuple {ℕ}))) (st : String → ℕ) :
-           ℕ → Cmd {ℕ} → ℕ → Set where
- TSKIP : ∀ (W : ℕ) → Γ , st , W =[ SKIP ]=> (W + 0)
+-- Making the tuple type needed to hold the program
+data TProgTuple {A : Set} : Set where
+  _,_,_,_ : (a : ATuple) → (r : RTuple) → (c : Cmd {A}) → (cmt : ℕ) → TProgTuple
 
- TASSIGN : ∀ (X : String) → ∀ (n : ℕ) → ∀ (e : Aexp {ℕ})
+-- Getting stuff from the TProgTuple
+getProgCmdT : {A : Set} → (p : Maybe (TProgTuple {A})) → Cmd {A}
+getProgCmdT (just (_ , _ , c , _)) = c
+getProgCmdT nothing = SKIP       -- Dangerous
+
+getProgArgsT : {A : Set} → (p : Maybe (TProgTuple {A})) → ATuple 
+getProgArgsT (just (a , _ , _ , _)) = a
+getProgArgsT nothing = Arg "VOID"
+
+getProgRetsT : {A : Set} → (p : Maybe (TProgTuple {A})) → RTuple 
+getProgRetsT (just (_ , r , _ , _)) = r
+getProgRetsT nothing = Ret "VOID"
+
+getProgTimeT : {A : Set} → (p : Maybe (TProgTuple {A})) → ℕ
+getProgTimeT (just (_ , _ , _ , t)) = t
+getProgTimeT nothing = 0
+
+
+data _,_=[_]=>ᴬ_  (Γ : (String → ℕ)) : ℕ → (ATuple) → ℕ → Set where
+
+  hd : ∀ (W : ℕ) → ∀ (v : String) →
+       Γ , W =[ Arg v ]=>ᴬ (W + (Γ "arg-copy"))
+
+  tl : (l r : ATuple) → (W W' W'' : ℕ) →
+       (Γ , W =[ l ]=>ᴬ (W + W')) → (Γ , W + W' =[ r ]=>ᴬ (W + W' + W'')) →
+        -----------------------------------------------------------
+        Γ , W =[ (l ,` r) ]=>ᴬ (W + W' + W'')
+
+numargs : ∀ (args : ATuple) → ℕ
+numargs (Arg v) = 1
+numargs (args ,` args₁) = numargs args + numargs args₁
+
+-- soundness theorem for arg copy
+args-sound : ∀ (Γ : (String → ℕ)) → ∀ (args : ATuple) → (W W' : ℕ)
+             → (Γ , W =[ args ]=>ᴬ W')
+             → (W + numargs args * (Γ "arg-copy")) ≡ W'
+args-sound Γ .(Arg v) W .(W + Γ "arg-copy") (hd .W v)
+  rewrite +-comm (Γ "arg-copy") 0 = refl
+args-sound Γ .(l ,` r) W .(W + W' + W'') (tl l r .W W' W'' cmd cmd₁)
+  with (Γ "arg-copy") in eq
+... | u rewrite *-distribʳ-+ u (numargs l) (numargs r)
+    | +-comm W (((numargs l) * u) + ((numargs r) * u))
+    | +-comm ((numargs l) * u) ((numargs r) * u)
+    | +-assoc ((numargs r) * u) ((numargs l) * u) W
+    | +-comm ((numargs l) * u) W
+    | +-comm ((numargs r) * u) (W + ((numargs l) * u))
+    with args-sound Γ l W (W + W') cmd
+... | j with args-sound Γ r (W + W') (W + W' + W'') cmd₁
+... | k with +-cancelˡ-≡ W j | +-cancelˡ-≡ (W + W') k | eq
+... | refl | refl | refl = refl
+
+
+data _,_=[_]=>ᴿ_  (Γ : (String →  ℕ)) : ℕ → RTuple → ℕ  → Set where
+  hd : ∀ (W : ℕ) → ∀ (v : String) →
+       Γ , W =[ Ret v ]=>ᴿ (W + (Γ "ret-copy"))
+
+  tl : (l r : RTuple) → (W W' W'' : ℕ) →
+       (Γ , W =[ l ]=>ᴿ (W + W')) → (Γ , W + W' =[ r ]=>ᴿ (W + W' + W'')) →
+        -----------------------------------------------------------
+        Γ , W =[ (l ,` r) ]=>ᴿ (W + W' + W'')
+
+numrets : ∀ (rets : RTuple) → ℕ
+numrets (Ret v) = 1
+numrets (rets ,` rets₁) = numrets rets + numrets rets₁
+
+-- soundness theorem for ret copy
+rets-sound : ∀ (Γ : (String → ℕ)) → ∀ (rets : RTuple) → (W W' : ℕ)
+             → Γ , W =[ rets ]=>ᴿ W'
+             → (W + numrets rets * (Γ "ret-copy")) ≡ W'
+rets-sound Γ .(Ret v) W .(W + Γ "ret-copy") (hd .W v)
+  rewrite +-comm (Γ "ret-copy") 0 = refl
+rets-sound Γ .(l ,` r) W .(W + W' + W'') (tl l r .W W' W'' cmd cmd₁)
+  with (Γ "ret-copy") in eq
+... | u rewrite *-distribʳ-+ u (numrets l) (numrets r)
+    | +-comm W (((numrets l) * u) + ((numrets r) * u))
+    | +-comm ((numrets l) * u) ((numrets r) * u)
+    | +-assoc ((numrets r) * u) ((numrets l) * u) W
+    | +-comm ((numrets l) * u) W
+    | +-comm ((numrets r) * u) (W + ((numrets l) * u))
+    with rets-sound Γ l W (W + W') cmd
+... | j with rets-sound Γ r (W + W') (W + W' + W'') cmd₁
+... | k with +-cancelˡ-≡ W j | +-cancelˡ-≡ (W + W') k | eq
+... | refl | refl | refl = refl
+
+mutual
+-- Semantics of time from here
+ data _,_,_=[_]=>_ (Γ : (String → Maybe (TProgTuple {ℕ}))) (st : String → ℕ) :
+           ℕ → Cmd {ℕ} → ℕ → Set where
+  TSKIP : ∀ (W : ℕ) → Γ , st , W =[ SKIP ]=> (W + 0)
+
+  TASSIGN : ∀ (X : String) → ∀ (n : ℕ) → ∀ (e : Aexp {ℕ})
            → ∀ (W : ℕ) →
            ---------------------------------
            Γ , st ,  W =[ (Var X := e) ]=> (W + (tceval st (Var X := e)))
 
- TSEQ : ∀ (c1 c2 : Cmd {ℕ})
+  TSEQ : ∀ (c1 c2 : Cmd {ℕ})
         → ∀ (W W' W'' : ℕ)
         → Γ , st , W =[ c1 ]=> (W + W')
         → Γ , st , (W + W') =[ c2 ]=> (W + (W' + W'')) →
         --------------------------------------------
         Γ , st ,  W =[ c1 ¿ c2 ]=> (W + (W' + W''))
 
- -- XXX: Hack, st contains both exec time and state!
- TIFT : (n1 : ℕ) → (b : Bexp {ℕ}) →
+  -- XXX: Hack, st contains both exec time and state!
+  TIFT : (n1 : ℕ) → (b : Bexp {ℕ}) →
         (t e : Cmd {ℕ}) → ∀ (W : ℕ)
         → (beval st b ≡ true)
+        -- XXX: In the paper put this:
+        -- Γ , st , W =[ t ]=> W + W'
+        -- Γ , st , W =[ e ]=> W + W''
         → Γ , st , W =[ (IF b THEN t ELSE e END) ]=>
           (W + (tceval st t + (tbeval st b)))
 
- TIFE : (n1 : ℕ) → (b : Bexp {ℕ}) →
+  TIFE : (n1 : ℕ) → (b : Bexp {ℕ}) →
         (t e : Cmd {ℕ}) → ∀ (W : ℕ)
         → (beval st b ≡ false)
         → Γ , st , W =[ (IF b THEN t ELSE e END) ]=>
         -- XXX: In the paper put this:
         -- Γ , st , W =[ t ]=> W + W'
         -- Γ , st , W =[ e ]=> W + W''
-        -- XXX: using tceval here is a shrot cut
+        -- XXX: using tceval here is a short cut
           (W + (tceval st e + (tbeval st b)))
 
- TLF :  (b : Bexp {ℕ}) → (c : Cmd {ℕ}) →
+  TLF :  (b : Bexp {ℕ}) → (c : Cmd {ℕ}) →
         beval st b ≡ false →
         ∀ (W : ℕ) →
         -----------------------------------------------------------
         Γ , st , W =[ (WHILE b DO c END) ]=>
-        (W + (0 * (tceval st c)) + (tbeval st b))
+        (W + 0 + (tbeval st b))
 
- TLT :  (b : Bexp {ℕ}) → (c : Cmd {ℕ}) →
-        beval st b ≡ true → ∀ (W : ℕ) →
+  TLT :  (b : Bexp {ℕ}) → (c : Cmd {ℕ}) →
+        beval st b ≡ true → ∀ (W W' : ℕ) →
         -----------------------------------------------------------
-        -- XXX: In the paper put this:
-        -- Γ , st , W =[ c ]=> W + W'
+        Γ , st , W =[ c ]=> (W + W') →
         Γ , st , W =[ (WHILE b DO c END) ]=>
-        (W + ((st "loop-count") * (tceval st c)) + (tbeval st b))
+        (W + ((st "loop-count") * (W' + (tbeval st b))) + (tbeval st b))
 
- -- XXX: Done.
  -- CEX : ∀ (f : FuncCall {ℕ}) → ∀ (st st' : (String → ℕ))
  --       → Γ , st =[ f ]=>ᶠ st'
  --       -----------------------------------------------------------
  --       → Γ , st =[ EXEC f ]=> st'
         
+ data _,_,_=[_]=>ᶠ_ (Γ : String → (Maybe (TProgTuple {ℕ}))) (st : String → ℕ) :
+                  ℕ → FuncCall {ℕ} → ℕ → Set where
+
+  Base : ∀ (fname : String) →        -- name of the function
+         ∀ (W W' W'' W''' : ℕ)
+
+         -- time to put args on function stack
+         → st , W =[ getProgArgsT (Γ fname) ]=>ᴬ (W + W') 
+
+         -- Proof that WCET is what we have in the tuple
+         → (wcet-is : (getProgTimeT (Γ fname)) ≡ W'')
+         -- time to run the function
+         → Γ , st , (W + W') =[ getProgCmdT (Γ fname) ]=> (W + W' + W'')
+
+         -- copying ret values back on caller' stack
+         → st , (W + W' + W'')
+              =[ getProgRetsT (Γ fname) ]=>ᴿ (W + W' + W'' + W''')
+
+         -----------------------------------------------------------
+         → Γ , st , W =[ < getProgRetsT (Γ fname) >:=
+             fname < getProgArgsT (Γ fname) > ]=>ᶠ (W + W' + W'' + W''')
+
 -- Soundness theorem for SKIP WCET rule
-skip-sound : (Γ : String → Maybe (ProgTuple {ℕ}))
+skip-sound : (Γ : String → Maybe (TProgTuple {ℕ}))
            → (Γᵗ : String → ℕ)  -- map of labels to execution times
            → ∀ (W W' X : ℕ) → (cmd : Γ , Γᵗ , W =[ SKIP ]=> W')
            → (W ≡ X) → (W' ≡ X)
 skip-sound Γ Γᵗ W .(W + 0) .W (TSKIP .W) refl rewrite +-comm W 0 = refl
 
 -- Soundness theorem for Assign WCET rule
-assign-sound : (Γ : String → Maybe (ProgTuple {ℕ}))
+assign-sound : (Γ : String → Maybe (TProgTuple {ℕ}))
              → (Γᵗ : (String → ℕ))
              → (S : String) → (e : Aexp {ℕ})
              → (W W' X n : ℕ) → (cmd : Γ , Γᵗ , W =[ Var S := e ]=> W')
@@ -129,7 +241,7 @@ assign-sound Γ st S e W .(W + tceval st (Var S := e)) .W
 
 
 -- Deterministic exec
-Δ-exec : (Γ : String → Maybe (ProgTuple {ℕ}))
+Δ-exec : (Γ : String → Maybe (TProgTuple {ℕ}))
          → (Γᵗ : String → ℕ)
          → ∀ (W W' W'' : ℕ) → (c1 : Cmd {ℕ})
          → (Γ , Γᵗ , W =[ c1 ]=> W')
@@ -161,21 +273,24 @@ assign-sound Γ st S e W .(W + tceval st (Var S := e)) .W
 Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
   .(W + (tceval Γᵗ e + tbeval Γᵗ b)) IF b THEN t ELSE e END
   (TIFE n2 .b .t .e .W x) (TIFE n1 .b .t .e .W x₁) = refl
-Δ-exec Γ Γᵗ W .(W + 0 * tceval Γᵗ c + tbeval Γᵗ b)
-  .(W + 0 * tceval Γᵗ c + tbeval Γᵗ b) WHILE b DO c END (TLF .b .c x .W)
+Δ-exec Γ Γᵗ W .(W + 0 + tbeval Γᵗ b)
+  .(W + 0 + tbeval Γᵗ b) WHILE b DO c END (TLF .b .c x .W)
   (TLF .b .c x₁ .W) = refl
-Δ-exec Γ Γᵗ W .(W + Γᵗ "loop-count" * tceval Γᵗ c + tbeval Γᵗ b)
-  .(W + 0 * tceval Γᵗ c + tbeval Γᵗ b) WHILE b DO c END (TLT .b .c x .W)
+Δ-exec Γ Γᵗ W .(W + Γᵗ "loop-count" * (W' + tbeval Γᵗ b) + _)
+  .(W + 0 + tbeval Γᵗ b) WHILE b DO c END (TLT .b .c x .W W' x₂)
   (TLF .b .c x₁ .W) = ⊥-elim (contradiction-lemma b Γᵗ x x₁)
-Δ-exec Γ Γᵗ W .(W + 0 * tceval Γᵗ c + tbeval Γᵗ b)
-  .(W + Γᵗ "loop-count" * tceval Γᵗ c + tbeval Γᵗ b) WHILE b DO c END
-  (TLF .b .c x .W) (TLT .b .c x₁ .W) =
-  ⊥-elim (contradiction-lemma b Γᵗ x₁ x)
-Δ-exec Γ Γᵗ W .(W + Γᵗ "loop-count" * tceval Γᵗ c + tbeval Γᵗ b)
-  .(W + Γᵗ "loop-count" * tceval Γᵗ c + tbeval Γᵗ b) WHILE b DO c END
-    (TLT .b .c x .W) (TLT .b .c x₁ .W) = refl
+Δ-exec Γ Γᵗ W .(W + 0 + tbeval Γᵗ b)
+  .(W + Γᵗ "loop-count" * (W'' + tbeval Γᵗ b) + _) WHILE b DO c END
+  (TLF .b .c x .W) (TLT .b .c x₁ .W W'' x₂)
+  = ⊥-elim (contradiction-lemma b Γᵗ x₁ x)
+Δ-exec Γ Γᵗ W .(W + Γᵗ "loop-count" * (W' + tbeval Γᵗ b) + _)
+  .(W + Γᵗ "loop-count" * (W'' + tbeval Γᵗ b) + _) WHILE b DO c END
+  (TLT .b .c x .W W' x₃) (TLT .b .c x₁ .W W'' x₂)
+  with Δ-exec Γ Γᵗ W (W + W') (W + W'') c x₃ x₂
+... | l with +-cancelˡ-≡ W l
+... | refl = refl
 
-skip-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
+skip-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γᵗ : String → ℕ)
                → ∀ (W1 W2 X1 X2 : ℕ)
                → (Γ , Γᵗ , W1 =[ SKIP ]=> (W1 + X1))
@@ -190,7 +305,7 @@ skip-exec-time Γ Γᵗ W1 W2 _ X2 (TSKIP .W1) (TSKIP .W2)
   | .(W1 + _) | refl | .(W2 + 0) with +-cancelˡ-≡ W2 eq2
 ... | refl = refl
 
-assign-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
+assign-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γᵗ : String → ℕ)
                → ∀ (W1 W2 X1 X2 : ℕ)
                → (S : String) → (e : Aexp {ℕ})
@@ -209,7 +324,21 @@ assign-exec-time Γ Γᵗ W1 W2 .(Γᵗ S + aeval Γᵗ e) X2 S e (TASSIGN .S n 
   (TASSIGN .S n₁ .e .W2) | .(W1 + tceval Γᵗ (Var S := e)) | refl |
   .(W2 + tceval Γᵗ (Var S := e)) | refl = refl 
 
-ife-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
+-- command lemma: starting from any value the command c takes X amount
+-- of time to result in the same execution time TODO: Follow the above
+-- and below technique for all command cases!
+
+-- XXX: I will do this at the end because other commands remain.
+postulate eq-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
+               → (Γᵗ : String → ℕ)
+               → ∀ (c : Cmd {ℕ})
+               → ∀ (W1 W2 X1 X2 : ℕ)
+               → (Γ , Γᵗ , W1 =[ c ]=> (W1 + X1))
+               → (Γ , Γᵗ , W2 =[ c ]=> (W2 + X2))
+               → X1 ≡ X2
+-- eq-exec-time Γ Γᵗ c W1 W2 X1 X2 p1 p2 = {!!}
+
+ife-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γᵗ : String → ℕ)
                → ∀ (W1 W2 X1 X2 : ℕ)
                → (b : Bexp {ℕ})
@@ -240,21 +369,7 @@ ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFE n1 .b .t .e .W1 x)
   | .(W2 + (tceval Γᵗ e + tbeval Γᵗ b)) rewrite +-cancelˡ-≡ W1 eq1
   | +-cancelˡ-≡ W2 eq2 = refl
 
--- command lemma: starting from any value the command c takes X amount
--- of time to result in the same execution time TODO: Follow the above
--- and below technique for all command cases!
-
--- XXX: I will do this at the end because other commands remain.
-postulate eq-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
-               → (Γᵗ : String → ℕ)
-               → ∀ (c : Cmd {ℕ})
-               → ∀ (W1 W2 X1 X2 : ℕ)
-               → (Γ , Γᵗ , W1 =[ c ]=> (W1 + X1))
-               → (Γ , Γᵗ , W2 =[ c ]=> (W2 + X2))
-               → X1 ≡ X2
--- eq-exec-time Γ Γᵗ c W1 W2 X1 X2 p1 p2 = {!!}
-
-seq-exec-time : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
+seq-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γᵗ : String → ℕ)
                → ∀ (W1 W2 X1 X2 : ℕ)
                → (c1 c2 : Cmd {ℕ}) 
@@ -287,7 +402,7 @@ seq-exec-time Γ Γᵗ W1 W2 X1 X2 c1 c2 (TSEQ .c1 .c2 .W1 W' W'' p1 p3)
 
 
 -- Soundness theorem for Seq WCET rule
-seq-sound : (Γ : String → Maybe (ProgTuple {ℕ}))
+seq-sound : (Γ : String → Maybe (TProgTuple {ℕ}))
             → (Γᵗ : String → ℕ)
             → (c1 c2 : Cmd {ℕ})
             → (W X1 X2 W' : ℕ)
@@ -326,7 +441,7 @@ plus-> m n p q with ≤-rela1 m n q
 ... | r = plus-≤ n m p (≤-rela2 m n r)
 
 -- Soundness theorem for If-else WCET rule
-ife-sound : (Γ : String → Maybe (ProgTuple {ℕ}))
+ife-sound : (Γ : String → Maybe (TProgTuple {ℕ}))
             → (Γᵗ : String → ℕ)
             → (t e : Cmd {ℕ})
             → (b : Bexp {ℕ})
@@ -362,27 +477,44 @@ loop-helper : ∀ (l g : ℕ) → (l ≤′ (g + l))
 loop-helper l zero = ≤′-refl
 loop-helper l (suc g) = ≤′-step (loop-helper l g)
 
--- Now do loop here
--- XXX: Using well founded recirsion here
-loop-sound : (Γ : String → Maybe (ProgTuple {ℕ}))
+-- XXX: Using well founded recursion here
+loop-sound-≤′ : (Γ : String → Maybe (TProgTuple {ℕ}))
             → (Γᵗ : String → ℕ)
             → (c : Cmd {ℕ})
             → (b : Bexp {ℕ})
-            → (W W' : ℕ)
+            → (W W' X1 : ℕ)
+            → (Γ , Γᵗ , W =[ c ]=> (W + X1))
             → (cmd : Γ , Γᵗ , W =[ (WHILE b DO c END) ]=> W')
-            → (W' ≤′ W + ((Γᵗ "loop-count") * (tceval Γᵗ c)) + (tbeval Γᵗ b))
-loop-sound Γ Γᵗ c b W .(W + 0 * tceval Γᵗ c + tbeval Γᵗ b) (TLF .b .c x .W)
+            → W' ≤′
+              W + ((Γᵗ "loop-count") * (X1 + (tbeval Γᵗ b))) + (tbeval Γᵗ b)
+loop-sound-≤′ Γ Γᵗ c b W .(W + 0 + tbeval Γᵗ b) X1 cmd (TLF .b .c x .W)
   with (Γᵗ "loop-count")
 ... | zero = ≤′-refl
-... | suc u rewrite +-comm W 0
-  with (tbeval Γᵗ b) | (tceval Γᵗ c)
-... | m | q rewrite +-comm W (q + u * q)
-    | +-assoc (q + u * q) W m
-  with (W + m) | (q + u * q)
-... | l | g = loop-helper l g
-loop-sound Γ Γᵗ c b W
-  .(W + Γᵗ "loop-count" * tceval Γᵗ c + tbeval Γᵗ b) (TLT .b .c x .W) = ≤′-refl
+... | suc m rewrite +-comm W 0
+    with (tbeval Γᵗ b)
+... | q
+    with (X1 + q + m * (X1 + q))
+... | t rewrite +-comm W t | +-assoc t W q with (W + q)
+... | l = loop-helper l t
+loop-sound-≤′  Γ Γᵗ c b W
+  .(W + Γᵗ "loop-count" * (W' + tbeval Γᵗ b) + tbeval Γᵗ b) X1 cmd
+  (TLT .b .c x .W W' cmd1)
+  with Δ-exec Γ Γᵗ W (W + W') (W + X1) c cmd1 cmd
+... | r with +-cancelˡ-≡ W r
+... | refl = ≤′-refl
+
+-- The general case 
+loop-sound : (Γ : String → Maybe (TProgTuple {ℕ}))
+            → (Γᵗ : String → ℕ)
+            → (c : Cmd {ℕ})
+            → (b : Bexp {ℕ})
+            → (W W' X1 : ℕ)
+            → (Γ , Γᵗ , W =[ c ]=> (W + X1))
+            → (cmd : Γ , Γᵗ , W =[ (WHILE b DO c END) ]=> W')
+            → W' ≤
+              W + ((Γᵗ "loop-count") * (X1 + (tbeval Γᵗ b))) + (tbeval Γᵗ b)
+loop-sound Γ Γᵗ c b W W' X1 c2 cmd =
+  ≤′⇒≤ (loop-sound-≤′ Γ Γᵗ c b W W' X1 c2 cmd)
 
 -- Then do exec statement for 1 function call
-
 
