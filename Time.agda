@@ -516,5 +516,25 @@ loop-sound : (Γ : String → Maybe (TProgTuple {ℕ}))
 loop-sound Γ Γᵗ c b W W' X1 c2 cmd =
   ≤′⇒≤ (loop-sound-≤′ Γ Γᵗ c b W W' X1 c2 cmd)
 
+
+-- The soundness theorem for a single function call
+func-sound : (Γ : String → Maybe (TProgTuple {ℕ})) → ∀ (Γᵗ : String → ℕ)
+             → ∀ (fname : String) → ∀ (W W' : ℕ)
+             → Γ , Γᵗ , W =[ < getProgRetsT (Γ fname) >:=
+                             fname < getProgArgsT (Γ fname) > ]=>ᶠ W'
+             → W' ≡ (W + ((numargs (getProgArgsT (Γ fname))) * (Γᵗ "arg-copy"))
+                    + (getProgTimeT (Γ fname))
+                    + ((numrets (getProgRetsT (Γ fname))) * (Γᵗ "ret-copy")))
+func-sound Γ Γᵗ fname W .(W + W' + getProgTimeT (Γ fname) + W''') (Base .fname .W W' .(getProgTimeT (Γ fname)) W''' x refl x₁ x₂)
+  with args-sound Γᵗ (getProgArgsT (Γ fname)) W (W + W') x
+       | rets-sound Γᵗ (getProgRetsT (Γ fname))
+         (W + W' + getProgTimeT (Γ fname))
+         (W + W' + getProgTimeT (Γ fname) + W''') x₂
+... | l | m with +-cancelˡ-≡ W l
+... | refl
+  with +-cancelˡ-≡ (W + numargs (getProgArgsT (Γ fname)) * Γᵗ "arg-copy"
+                   + getProgTimeT (Γ fname)) m
+... | refl = refl
+
 -- Then do exec statement for 1 function call
 
