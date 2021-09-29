@@ -45,17 +45,6 @@ tbeval Γ (b &&` b₁) = tbeval Γ b + tbeval Γ b₁ + (Γ "AND")
 tbeval Γ (b ||` b₁) = tbeval Γ b + tbeval Γ b₁ + (Γ "OR")
 
 
--- Time eval as a function. Γ is the map from labels to execution time
--- for a statement
-tceval : (Γ : (String → ℕ)) → Cmd {ℕ} → ℕ
-tceval Γ SKIP = 0
-tceval Γ (l := r) with l
-... | Var x = Γ x + (aeval Γ r)
-tceval Γ (c ¿ c₁) = (tceval Γ c) + (tceval Γ c₁)
-tceval Γ IF b THEN c ELSE c₁ END = max (tceval Γ c) (tceval Γ c₁) + (tbeval Γ b)
-tceval Γ WHILE b DO c END = ((Γ "loop-count") * (tceval Γ c)) + (tbeval Γ b)
-tceval Γ (EXEC x) = 0 -- FIXME: Fix this later
-
 -- Making the tuple type needed to hold the program
 data TProgTuple {A : Set} : Set where
   _,_,_,_ : (a : ATuple) → (r : RTuple) → (c : Cmd {A}) → (cmt : ℕ) → TProgTuple
@@ -153,7 +142,8 @@ mutual
   TASSIGN : ∀ (X : String) → ∀ (n : ℕ) → ∀ (e : Aexp {ℕ})
            → ∀ (W : ℕ) →
            ---------------------------------
-           Γ , st ,  W =[ (Var X := e) ]=> (W + (tceval st (Var X := e)))
+           Γ , st ,  W =[ (Var X := e) ]=> (W + (taeval st e) + (st "store"))
+           -- Γ , st ,  W =[ (Var X := e) ]=> (W + (tceval st (Var X := e)))
 
   TSEQ : ∀ (c1 c2 : Cmd {ℕ})
         → ∀ (W W' W'' : ℕ)
@@ -231,11 +221,10 @@ skip-sound Γ Γᵗ W .(W + 0) .W (TSKIP .W) refl rewrite +-comm W 0 = refl
 assign-sound : (Γ : String → Maybe (TProgTuple {ℕ}))
              → (Γᵗ : (String → ℕ))
              → (S : String) → (e : Aexp {ℕ})
-             → (W W' X n : ℕ) → (cmd : Γ , Γᵗ , W =[ Var S := e ]=> W')
-             → (tceval Γᵗ (Var S := e)) ≡ n
-             → (W ≡ X) → (W' ≡ X + n)
-assign-sound Γ st S e W .(W + tceval st (Var S := e)) .W
-  .(tceval st (Var S := e)) (TASSIGN .S n .e .W) refl refl = refl
+             → (W W' : ℕ) → (cmd : Γ , Γᵗ , W =[ Var S := e ]=> W')
+             → (W' ≡ W + (taeval Γᵗ e) + (Γᵗ "store"))
+assign-sound Γ Γᵗ S e W .(W + taeval Γᵗ e + Γᵗ "store") (TASSIGN .S n .e .W)
+  = refl
 
 
 -- Deterministic exec
@@ -245,9 +234,10 @@ assign-sound Γ st S e W .(W + tceval st (Var S := e)) .W
          → (Γ , Γᵗ , W =[ c1 ]=> W')
          → (Γ , Γᵗ , W =[ c1 ]=> W'')
          → W' ≡ W''
+Δ-exec Γ Γᵗ W .(W + taeval Γᵗ e + Γᵗ "store")
+  .(W + taeval Γᵗ e + Γᵗ "store") (Var X := e) (TASSIGN .X n₁ .e .W)
+  (TASSIGN .X n .e .W) = refl
 Δ-exec Γ Γᵗ W .(W + 0) .(W + 0) .SKIP (TSKIP .W) (TSKIP .W) = refl
-Δ-exec Γ Γᵗ W .(W + tceval Γᵗ (Var X := e)) .(W + tceval Γᵗ (Var X := e))
- .(Var X := e) (TASSIGN X n e .W) (TASSIGN .X n₁ .e .W) = refl
 Δ-exec Γ Γᵗ W .(W + (W' + W''')) .(W + (W'' + W''''))
  .(c1 ¿ c2) (TSEQ c1 c2 .W W' W''' p1 p3) (TSEQ .c1 .c2 .W W'' W'''' p2 p4)
  with Δ-exec Γ Γᵗ W (W + W') (W + W'') c1 p1 p2
@@ -298,39 +288,34 @@ assign-sound Γ st S e W .(W + tceval st (Var S := e)) .W
 ... | y with +-cancelˡ-≡ W y
 ... | refl = refl
 
-skip-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
+skip-cancel : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γᵗ : String → ℕ)
                → ∀ (W1 W2 X1 X2 : ℕ)
                → (Γ , Γᵗ , W1 =[ SKIP ]=> (W1 + X1))
                → (Γ , Γᵗ , W2 =[ SKIP ]=> (W2 + X2))
                → X1 ≡ X2
-skip-exec-time Γ Γᵗ W1 W2 X1 X2 p1 p2 with (W1 + X1) in eq1
-skip-exec-time Γ Γᵗ W1 W2 X1 X2 (TSKIP .W1) p2 | .(W1 + 0)
+skip-cancel Γ Γᵗ W1 W2 X1 X2 p1 p2 with (W1 + X1) in eq1
+skip-cancel Γ Γᵗ W1 W2 X1 X2 (TSKIP .W1) p2 | .(W1 + 0)
   with +-cancelˡ-≡ W1 eq1
-skip-exec-time Γ Γᵗ W1 W2 X1 X2 (TSKIP .W1) p2 | .(W1 + 0) | refl
+skip-cancel Γ Γᵗ W1 W2 X1 X2 (TSKIP .W1) p2 | .(W1 + 0) | refl
   with (W2 + X2) in eq2
-skip-exec-time Γ Γᵗ W1 W2 _ X2 (TSKIP .W1) (TSKIP .W2)
+skip-cancel Γ Γᵗ W1 W2 _ X2 (TSKIP .W1) (TSKIP .W2)
   | .(W1 + _) | refl | .(W2 + 0) with +-cancelˡ-≡ W2 eq2
 ... | refl = refl
 
-assign-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
+assign-cancel : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γᵗ : String → ℕ)
                → ∀ (W1 W2 X1 X2 : ℕ)
                → (S : String) → (e : Aexp {ℕ})
                → (Γ , Γᵗ , W1 =[ Var S := e ]=> (W1 + X1))
                → (Γ , Γᵗ , W2 =[ Var S := e ]=> (W2 + X2))
                → X1 ≡ X2
-assign-exec-time Γ Γᵗ W1 W2 X1 X2 S e p1 p2 with (W1 + X1) in eq
-assign-exec-time Γ Γᵗ W1 W2 X1 X2 S e (TASSIGN .S n .e .W1) p2 |
-  .(W1 + tceval Γᵗ (Var S := e)) with +-cancelˡ-≡ W1 eq
-assign-exec-time Γ Γᵗ W1 W2 X1 X2 S e (TASSIGN .S n .e .W1) p2 |
-  .(W1 + tceval Γᵗ (Var S := e)) | refl with (W2 + X2) in eq2
-assign-exec-time Γ Γᵗ W1 W2 .(Γᵗ S + aeval Γᵗ e) X2 S e (TASSIGN .S n .e .W1)
-  (TASSIGN .S n₁ .e .W2) | .(W1 + tceval Γᵗ (Var S := e)) | refl |
-  .(W2 + tceval Γᵗ (Var S := e)) with +-cancelˡ-≡ W2 eq2
-assign-exec-time Γ Γᵗ W1 W2 .(Γᵗ S + aeval Γᵗ e) X2 S e (TASSIGN .S n .e .W1)
-  (TASSIGN .S n₁ .e .W2) | .(W1 + tceval Γᵗ (Var S := e)) | refl |
-  .(W2 + tceval Γᵗ (Var S := e)) | refl = refl 
+assign-cancel Γ Γᵗ W1 W2 X1 X2 S e cmd1 cmd2 with (W1 + X1) in eq1 | (W2 + X2) in eq2
+assign-cancel Γ Γᵗ W1 W2 X1 X2 S e (TASSIGN .S n .e .W1) (TASSIGN .S n₁ .e .W2) | .(W1 + taeval Γᵗ e + Γᵗ "store") | .(W2 + taeval Γᵗ e + Γᵗ "store")
+  rewrite +-assoc W1 (taeval Γᵗ e) (Γᵗ "store")
+  | +-assoc W2 (taeval Γᵗ e) (Γᵗ "store")
+  with +-cancelˡ-≡ W1 eq1 | +-cancelˡ-≡ W2 eq2
+... | refl | refl = refl
 
 -- command lemma: starting from any value the command c takes X amount
 -- of time to result in the same execution time TODO: Follow the above
