@@ -164,23 +164,20 @@ mutual
 
   -- XXX: Hack, st contains both exec time and state!
   TIFT : (n1 : ℕ) → (b : Bexp {ℕ}) →
-        (t e : Cmd {ℕ}) → ∀ (W : ℕ)
+        (t e : Cmd {ℕ}) → ∀ (W W' W'' : ℕ)
         → (beval st b ≡ true)
-        -- XXX: In the paper put this:
-        -- Γ , st , W =[ t ]=> W + W'
-        -- Γ , st , W =[ e ]=> W + W''
+        → Γ , st , W =[ t ]=> (W + W')
+        → Γ , st , W =[ e ]=> (W + W'')
         → Γ , st , W =[ (IF b THEN t ELSE e END) ]=>
-          (W + (tceval st t + (tbeval st b)))
+          (W + W' + (tbeval st b))
 
   TIFE : (n1 : ℕ) → (b : Bexp {ℕ}) →
-        (t e : Cmd {ℕ}) → ∀ (W : ℕ)
+        (t e : Cmd {ℕ}) → ∀ (W W' W'' : ℕ)
         → (beval st b ≡ false)
+        → Γ , st , W =[ t ]=> (W + W')
+        → Γ , st , W =[ e ]=> (W + W'')
         → Γ , st , W =[ (IF b THEN t ELSE e END) ]=>
-        -- XXX: In the paper put this:
-        -- Γ , st , W =[ t ]=> W + W'
-        -- Γ , st , W =[ e ]=> W + W''
-        -- XXX: using tceval here is a short cut
-          (W + (tceval st e + (tbeval st b)))
+          (W +  W'' + (tbeval st b))
 
   TLF :  (b : Bexp {ℕ}) → (c : Cmd {ℕ}) →
         beval st b ≡ false →
@@ -260,20 +257,6 @@ assign-sound Γ st S e W .(W + tceval st (Var S := e)) .W
 ... | rr with +-cancelˡ-≡ W rr
 ... | rm with +-cancelˡ-≡ W' rm
 ... | refl = refl
-Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ t + tbeval Γᵗ b))
-  .(W + (tceval Γᵗ t + tbeval Γᵗ b)) IF b THEN t ELSE e END
-  (TIFT n2 .b .t .e .W x) (TIFT n1 .b .t .e .W x₁) = refl
-Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
-  .(W + (tceval Γᵗ t + tbeval Γᵗ b)) IF b THEN t ELSE e END
-  (TIFE n2 .b .t .e .W x) (TIFT n1 .b .t .e .W x₁)
-  = ⊥-elim (contradiction-lemma b Γᵗ x₁ x)
-Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ t + tbeval Γᵗ b))
-  .(W + (tceval Γᵗ e + tbeval Γᵗ b)) IF b THEN t ELSE e END
-  (TIFT n2 .b .t .e .W x) (TIFE n1 .b .t .e .W x₁)
-  = ⊥-elim (contradiction-lemma b Γᵗ x x₁)
-Δ-exec Γ Γᵗ W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
-  .(W + (tceval Γᵗ e + tbeval Γᵗ b)) IF b THEN t ELSE e END
-  (TIFE n2 .b .t .e .W x) (TIFE n1 .b .t .e .W x₁) = refl
 Δ-exec Γ Γᵗ W .(W + 0 + tbeval Γᵗ b)
   .(W + 0 + tbeval Γᵗ b) WHILE b DO c END (TLF .b .c x .W)
   (TLF .b .c x₁ .W) = refl
@@ -289,6 +272,30 @@ assign-sound Γ st S e W .(W + tceval st (Var S := e)) .W
   (TLT .b .c x .W W' x₃) (TLT .b .c x₁ .W W'' x₂)
   with Δ-exec Γ Γᵗ W (W + W') (W + W'') c x₃ x₂
 ... | l with +-cancelˡ-≡ W l
+... | refl = refl
+Δ-exec Γ Γᵗ W .(W + W' + tbeval Γᵗ b)
+  .(W + W'' + tbeval Γᵗ b) IF b THEN t ELSE e END
+  (TIFT n2 .b .t .e .W W' W'''' x x₄ x₅)
+  (TIFT n1 .b .t .e .W W'' W''' x₁ x₂ x₃)
+  with Δ-exec Γ Γᵗ W (W + W') (W + W'') t x₄ x₂
+... | y with +-cancelˡ-≡ W y
+... | refl = refl
+Δ-exec Γ Γᵗ W .(W + W'''' + tbeval Γᵗ b)
+  .(W + W'' + tbeval Γᵗ b) IF b THEN t ELSE e END
+  (TIFE n2 .b .t .e .W W' W'''' x x₄ x₅)
+  (TIFT n1 .b .t .e .W W'' W''' x₁ x₂ x₃)
+  = ⊥-elim (contradiction-lemma b Γᵗ x₁ x)
+Δ-exec Γ Γᵗ W .(W + W' + tbeval Γᵗ b)
+  .(W + W''' + tbeval Γᵗ b) IF b THEN t ELSE e END
+  (TIFT n2 .b .t .e .W W' W'''' x x₄ x₅)
+  (TIFE n1 .b .t .e .W W'' W''' x₁ x₂ x₃)
+  = ⊥-elim (contradiction-lemma b Γᵗ x x₁)
+Δ-exec Γ Γᵗ W .(W + W'''' + tbeval Γᵗ b)
+  .(W + W''' + tbeval Γᵗ b) IF b THEN t ELSE e END
+  (TIFE n2 .b .t .e .W W' W'''' x x₄ x₅)
+  (TIFE n1 .b .t .e .W W'' W''' x₁ x₂ x₃)
+  with Δ-exec Γ Γᵗ W (W + W''') (W + W'''') e x₃ x₅
+... | y with +-cancelˡ-≡ W y
 ... | refl = refl
 
 skip-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
@@ -348,27 +355,26 @@ ife-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γ , Γᵗ , W1 =[ ( IF b THEN t ELSE e END ) ]=> (W1 + X1))
                → (Γ , Γᵗ , W2 =[ ( IF b THEN t ELSE e END ) ]=> (W2 + X2))
                → X1 ≡ X2
-ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e p1 p2
-  with (W1 + X1) in eq1 | (W2 + X2) in eq2
-ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFT n1 .b .t .e .W1 x)
-  (TIFT n2 .b .t .e .W2 x₁) | .(W1 + (tceval Γᵗ t + tbeval Γᵗ b))
-  | .(W2 + (tceval Γᵗ t + tbeval Γᵗ b)) rewrite +-cancelˡ-≡ W1 eq1
-  | +-cancelˡ-≡ W2 eq2 = refl
-ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFT n1 .b .t .e .W1 x)
-  (TIFE n2 .b .t .e .W2 x₁)
-  | .(W1 + (tceval Γᵗ t + tbeval Γᵗ b))
-  | .(W2 + (tceval Γᵗ e + tbeval Γᵗ b))
-  = ⊥-elim (contradiction-lemma b Γᵗ x x₁)
-ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFE n1 .b .t .e .W1 x)
-  (TIFT n2 .b .t .e .W2 x₁)
-  | .(W1 + (tceval Γᵗ e + tbeval Γᵗ b))
-  | .(W2 + (tceval Γᵗ t + tbeval Γᵗ b))
-  = ⊥-elim (contradiction-lemma b Γᵗ x₁ x)
-ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFE n1 .b .t .e .W1 x)
-  (TIFE n2 .b .t .e .W2 x₁)
-  | .(W1 + (tceval Γᵗ e + tbeval Γᵗ b))
-  | .(W2 + (tceval Γᵗ e + tbeval Γᵗ b)) rewrite +-cancelˡ-≡ W1 eq1
-  | +-cancelˡ-≡ W2 eq2 = refl
+ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e p1 p2 with (W1 + X1) in eq1
+  | (W2 + X2) in eq2
+ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFT n1 .b .t .e .W1 W' W'' x p1 p3)
+  (TIFT n2 .b .t .e .W2 W''' W'''' x₁ p2 p4) | .(W1 + W' + tbeval Γᵗ b)
+  | .(W2 + W''' + tbeval Γᵗ b) with eq-exec-time Γ Γᵗ t W1 W2 W' W''' p1 p2
+... | refl rewrite +-assoc W2 W' (tbeval Γᵗ b) | +-assoc W1 W' (tbeval Γᵗ b)
+  with +-cancelˡ-≡ W2 eq2 | +-cancelˡ-≡ W1 eq1
+... | refl | refl = refl
+ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFT n1 .b .t .e .W1 W' W'' x p1 p3)
+  (TIFE n2 .b .t .e .W2 W''' W'''' x₁ p2 p4) | .(W1 + W' + tbeval Γᵗ b)
+  | .(W2 + W'''' + tbeval Γᵗ b) = ⊥-elim (contradiction-lemma b Γᵗ x x₁)
+ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFE n1 .b .t .e .W1 W' W'' x p1 p3)
+  (TIFT n2 .b .t .e .W2 W''' W'''' x₁ p2 p4) | .(W1 + W'' + tbeval Γᵗ b)
+  | .(W2 + W''' + tbeval Γᵗ b) = ⊥-elim (contradiction-lemma b Γᵗ x₁ x)
+ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFE n1 .b .t .e .W1 W' W'' x p1 p3)
+  (TIFE n2 .b .t .e .W2 W''' W'''' x₁ p2 p4) | .(W1 + W'' + tbeval Γᵗ b)
+  | .(W2 + W'''' + tbeval Γᵗ b) rewrite +-assoc W1 W'' (tbeval Γᵗ b)
+  | +-assoc W2 W'''' (tbeval Γᵗ b) with +-cancelˡ-≡ W2 eq2
+  | +-cancelˡ-≡ W1 eq1 | eq-exec-time Γ Γᵗ e W1 W2 W'' W'''' p3 p4
+... | refl | refl | refl = refl
 
 seq-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γᵗ : String → ℕ)
@@ -446,32 +452,35 @@ ife-sound : (Γ : String → Maybe (TProgTuple {ℕ}))
             → (Γᵗ : String → ℕ)
             → (t e : Cmd {ℕ})
             → (b : Bexp {ℕ})
-            → (W W' : ℕ)
+            → (W X1 X2 W' : ℕ)
+            → (tcmd : Γ , Γᵗ , W =[ t ]=> (W + X1))
+            → (ecmd : Γ , Γᵗ , W =[ e ]=> (W + X2))
             → (cmd : Γ , Γᵗ , W =[ (IF b THEN t ELSE e END) ]=> W')
-            → (W' ≤ W + ((max (tceval Γᵗ t) (tceval Γᵗ e)) + (tbeval Γᵗ b)))
-ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ t + tbeval Γᵗ b))
-  (TIFT n1 .b .t .e .W x)
- with (tceval Γᵗ t) ≤? (tceval Γᵗ e)
-... | false Relation.Nullary.because Relation.Nullary.ofⁿ ¬p = ≤-refl
-... | true Relation.Nullary.because Relation.Nullary.ofʸ p
-  with (tceval Γᵗ t) | (tceval Γᵗ e) | (tbeval Γᵗ b)
-... | m | n | q rewrite +-comm W (m + q)
-    | +-assoc m q W
-    | +-comm W (n + q)
-    | +-assoc n q W = plus-≤ m n (q + W) p
-ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
-  (TIFE n1 .b .t .e .W x) with (tceval Γᵗ t) ≤? (tceval Γᵗ e)
-ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
-  (TIFE n1 .b .t .e .W x)
-  | false Relation.Nullary.because Relation.Nullary.ofⁿ ¬p
-  with (tceval Γᵗ t) | (tceval Γᵗ e) | (tbeval Γᵗ b)
-... | m | n | q rewrite +-comm W (n + q)
-    | +-assoc n q W
-    | +-comm W (m + q)
-    | +-assoc m q W = plus-> m n (q + W) ¬p
-ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
-  (TIFE n1 .b .t .e .W x)
-  | true Relation.Nullary.because Relation.Nullary.ofʸ p = ≤-refl
+            → (W' ≤ W + (max X1 X2) + (tbeval Γᵗ b))
+ife-sound Γ Γᵗ t e b W X1 X2 W' tcmd ecmd cmd = {!!}
+-- .(W + (tceval Γᵗ t + tbeval Γᵗ b))
+--   (TIFT n1 .b .t .e .W x)
+--  with (tceval Γᵗ t) ≤? (tceval Γᵗ e)
+-- ... | false Relation.Nullary.because Relation.Nullary.ofⁿ ¬p = ≤-refl
+-- ... | true Relation.Nullary.because Relation.Nullary.ofʸ p
+--   with (tceval Γᵗ t) | (tceval Γᵗ e) | (tbeval Γᵗ b)
+-- ... | m | n | q rewrite +-comm W (m + q)
+--     | +-assoc m q W
+--     | +-comm W (n + q)
+--     | +-assoc n q W = plus-≤ m n (q + W) p
+-- ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
+--   (TIFE n1 .b .t .e .W x) with (tceval Γᵗ t) ≤? (tceval Γᵗ e)
+-- ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
+--   (TIFE n1 .b .t .e .W x)
+--   | false Relation.Nullary.because Relation.Nullary.ofⁿ ¬p
+--   with (tceval Γᵗ t) | (tceval Γᵗ e) | (tbeval Γᵗ b)
+-- ... | m | n | q rewrite +-comm W (n + q)
+--     | +-assoc n q W
+--     | +-comm W (m + q)
+--     | +-assoc m q W = plus-> m n (q + W) ¬p
+-- ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
+--   (TIFE n1 .b .t .e .W x)
+--   | true Relation.Nullary.because Relation.Nullary.ofʸ p = ≤-refl
 
 -- Helper for loop
 loop-helper : ∀ (l g : ℕ) → (l ≤′ (g + l))
