@@ -443,9 +443,19 @@ plus-≤ .(suc _) .(suc _) p (s≤s {m} {n} q) with plus-≤ m n p q
 ≤-rela2 m n p with n≤1+n n
 ... | q = ≤-trans q p
 
-plus-> : ∀ (m n p : ℕ) → ((m ≤ n) → ⊥) → (n + p) ≤ (m + p)
-plus-> m n p q with ≤-rela1 m n q
-... | r = plus-≤ n m p (≤-rela2 m n r)
+-- if-helper
+if-helper : ∀ (X1 X2 : ℕ) → (X1 ≤ max X1 X2)
+if-helper X1 X2 with (X1 ≤? X2)
+... | false Relation.Nullary.because proof = ≤′⇒≤ ≤′-refl
+... | true Relation.Nullary.because Relation.Nullary.ofʸ p = p
+
+if-helper2 : ∀ (X1 X2 : ℕ) → (X2 ≤ max X1 X2)
+if-helper2 X1 X2 with (X1 ≤? X2)
+if-helper2 X1 X2 | false Relation.Nullary.because Relation.Nullary.ofⁿ ¬p
+  with ≤-rela1 X1 X2 (¬p)
+... | q = ≤-rela2 X1 X2 q
+if-helper2 X1 X2 | true Relation.Nullary.because Relation.Nullary.ofʸ p
+  = ≤′⇒≤ ≤′-refl
 
 -- Soundness theorem for If-else WCET rule
 ife-sound : (Γ : String → Maybe (TProgTuple {ℕ}))
@@ -457,30 +467,26 @@ ife-sound : (Γ : String → Maybe (TProgTuple {ℕ}))
             → (ecmd : Γ , Γᵗ , W =[ e ]=> (W + X2))
             → (cmd : Γ , Γᵗ , W =[ (IF b THEN t ELSE e END) ]=> W')
             → (W' ≤ W + (max X1 X2) + (tbeval Γᵗ b))
-ife-sound Γ Γᵗ t e b W X1 X2 W' tcmd ecmd cmd = {!!}
--- .(W + (tceval Γᵗ t + tbeval Γᵗ b))
---   (TIFT n1 .b .t .e .W x)
---  with (tceval Γᵗ t) ≤? (tceval Γᵗ e)
--- ... | false Relation.Nullary.because Relation.Nullary.ofⁿ ¬p = ≤-refl
--- ... | true Relation.Nullary.because Relation.Nullary.ofʸ p
---   with (tceval Γᵗ t) | (tceval Γᵗ e) | (tbeval Γᵗ b)
--- ... | m | n | q rewrite +-comm W (m + q)
---     | +-assoc m q W
---     | +-comm W (n + q)
---     | +-assoc n q W = plus-≤ m n (q + W) p
--- ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
---   (TIFE n1 .b .t .e .W x) with (tceval Γᵗ t) ≤? (tceval Γᵗ e)
--- ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
---   (TIFE n1 .b .t .e .W x)
---   | false Relation.Nullary.because Relation.Nullary.ofⁿ ¬p
---   with (tceval Γᵗ t) | (tceval Γᵗ e) | (tbeval Γᵗ b)
--- ... | m | n | q rewrite +-comm W (n + q)
---     | +-assoc n q W
---     | +-comm W (m + q)
---     | +-assoc m q W = plus-> m n (q + W) ¬p
--- ife-sound Γ Γᵗ t e b W .(W + (tceval Γᵗ e + tbeval Γᵗ b))
---   (TIFE n1 .b .t .e .W x)
---   | true Relation.Nullary.because Relation.Nullary.ofʸ p = ≤-refl
+ife-sound Γ Γᵗ t e b W X1 X2 .(W + W' + tbeval Γᵗ b) tcmd ecmd
+  (TIFT n1 .b .t .e .W W' W'' x cmd cmd₁)
+  with Δ-exec Γ Γᵗ W (W + W') (W + X1) t cmd tcmd
+... | l with +-cancelˡ-≡ W l
+... | refl rewrite +-assoc W X1 (tbeval Γᵗ b) | +-comm W (X1 + (tbeval Γᵗ b))
+    | +-assoc X1 (tbeval Γᵗ b) W with (tbeval Γᵗ b)
+... | Y with max X1 X2 in eq
+... | M rewrite +-assoc W M Y | +-comm W (M + Y) | +-assoc M Y W
+    with (Y + W)
+... | L with if-helper X1 X2 | eq
+... | T | refl = plus-≤ X1 M L T
+ife-sound Γ Γᵗ t e b W X1 X2 .(W + W'' + tbeval Γᵗ b) tcmd ecmd
+  (TIFE n1 .b .t .e .W W' W'' x cmd cmd₁)
+  with (tbeval Γᵗ b) | Δ-exec Γ Γᵗ W (W + W'') (W + X2) e cmd₁ ecmd
+... | Y | l with +-cancelˡ-≡ W l
+... | refl with max X1 X2 in eq
+... | M rewrite +-assoc W X2 Y | +-assoc W M Y | +-comm W (X2 + Y)
+    | +-comm W (M + Y) | +-assoc X2 Y W | +-assoc M Y W with (Y + W)
+... | L with if-helper2 X1 X2 | eq
+... | T | refl = plus-≤ X2 M L T
 
 -- Helper for loop
 loop-helper : ∀ (l g : ℕ) → (l ≤′ (g + l))
