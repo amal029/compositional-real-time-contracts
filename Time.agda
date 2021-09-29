@@ -143,14 +143,13 @@ mutual
            → ∀ (W : ℕ) →
            ---------------------------------
            Γ , st ,  W =[ (Var X := e) ]=> (W + (taeval st e) + (st "store"))
-           -- Γ , st ,  W =[ (Var X := e) ]=> (W + (tceval st (Var X := e)))
 
   TSEQ : ∀ (c1 c2 : Cmd {ℕ})
         → ∀ (W W' W'' : ℕ)
         → Γ , st , W =[ c1 ]=> (W + W')
         → Γ , st , (W + W') =[ c2 ]=> (W + (W' + W'')) →
         --------------------------------------------
-        Γ , st ,  W =[ c1 ¿ c2 ]=> (W + (W' + W''))
+        Γ , st ,  W =[ c1 ; c2 ]=> (W + (W' + W''))
 
   -- XXX: Hack, st contains both exec time and state!
   TIFT : (n1 : ℕ) → (b : Bexp {ℕ}) →
@@ -239,7 +238,7 @@ assign-sound Γ Γᵗ S e W .(W + taeval Γᵗ e + Γᵗ "store") (TASSIGN .S n 
   (TASSIGN .X n .e .W) = refl
 Δ-exec Γ Γᵗ W .(W + 0) .(W + 0) .SKIP (TSKIP .W) (TSKIP .W) = refl
 Δ-exec Γ Γᵗ W .(W + (W' + W''')) .(W + (W'' + W''''))
- .(c1 ¿ c2) (TSEQ c1 c2 .W W' W''' p1 p3) (TSEQ .c1 .c2 .W W'' W'''' p2 p4)
+ .(c1 ; c2) (TSEQ c1 c2 .W W' W''' p1 p3) (TSEQ .c1 .c2 .W W'' W'''' p2 p4)
  with Δ-exec Γ Γᵗ W (W + W') (W + W'') c1 p1 p2
 ... | r with +-cancelˡ-≡ W r
 ... | refl
@@ -310,26 +309,15 @@ assign-cancel : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γ , Γᵗ , W1 =[ Var S := e ]=> (W1 + X1))
                → (Γ , Γᵗ , W2 =[ Var S := e ]=> (W2 + X2))
                → X1 ≡ X2
-assign-cancel Γ Γᵗ W1 W2 X1 X2 S e cmd1 cmd2 with (W1 + X1) in eq1 | (W2 + X2) in eq2
-assign-cancel Γ Γᵗ W1 W2 X1 X2 S e (TASSIGN .S n .e .W1) (TASSIGN .S n₁ .e .W2) | .(W1 + taeval Γᵗ e + Γᵗ "store") | .(W2 + taeval Γᵗ e + Γᵗ "store")
+assign-cancel Γ Γᵗ W1 W2 X1 X2 S e cmd1 cmd2 with (W1 + X1) in eq1
+  | (W2 + X2) in eq2
+assign-cancel Γ Γᵗ W1 W2 X1 X2 S e (TASSIGN .S n .e .W1)
+  (TASSIGN .S n₁ .e .W2) | .(W1 + taeval Γᵗ e + Γᵗ "store")
+  | .(W2 + taeval Γᵗ e + Γᵗ "store")
   rewrite +-assoc W1 (taeval Γᵗ e) (Γᵗ "store")
   | +-assoc W2 (taeval Γᵗ e) (Γᵗ "store")
   with +-cancelˡ-≡ W1 eq1 | +-cancelˡ-≡ W2 eq2
 ... | refl | refl = refl
-
--- command lemma: starting from any value the command c takes X amount
--- of time to result in the same execution time TODO: Follow the above
--- and below technique for all command cases!
-
--- XXX: I will do this at the end because other commands remain.
-postulate eq-cancel : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
-               → (Γᵗ : String → ℕ)
-               → ∀ (c : Cmd {ℕ})
-               → ∀ (W1 W2 X1 X2 : ℕ)
-               → (Γ , Γᵗ , W1 =[ c ]=> (W1 + X1))
-               → (Γ , Γᵗ , W2 =[ c ]=> (W2 + X2))
-               → X1 ≡ X2
--- eq-cancel Γ Γᵗ c W1 W2 X1 X2 p1 p2 = {!!}
 
 loop-cancel : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γᵗ : String → ℕ)
@@ -339,6 +327,31 @@ loop-cancel : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γ , Γᵗ , W1 =[ (WHILE b DO c END) ]=> (W1 + X1))
                → (Γ , Γᵗ , W2 =[ (WHILE b DO c END) ]=> (W2 + X2))
                → X1 ≡ X2
+ife-cancel : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
+               → (Γᵗ : String → ℕ)
+               → ∀ (W1 W2 X1 X2 : ℕ)
+               → (b : Bexp {ℕ})
+               → (t e : Cmd {ℕ}) 
+               → (Γ , Γᵗ , W1 =[ ( IF b THEN t ELSE e END ) ]=> (W1 + X1))
+               → (Γ , Γᵗ , W2 =[ ( IF b THEN t ELSE e END ) ]=> (W2 + X2))
+               → X1 ≡ X2
+seq-cancel : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
+               → (Γᵗ : String → ℕ)
+               → ∀ (W1 W2 X1 X2 : ℕ)
+               → (c1 c2 : Cmd {ℕ}) 
+               → (Γ , Γᵗ , W1 =[ ( c1 ; c2) ]=> (W1 + X1))
+               → (Γ , Γᵗ , W2 =[ ( c1 ; c2) ]=> (W2 + X2))
+               → X1 ≡ X2
+
+-- The general case of cancellation.
+eq-cancel : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
+               → (Γᵗ : String → ℕ)
+               → ∀ (c : Cmd {ℕ})
+               → ∀ (W1 W2 X1 X2 : ℕ)
+               → (Γ , Γᵗ , W1 =[ c ]=> (W1 + X1))
+               → (Γ , Γᵗ , W2 =[ c ]=> (W2 + X2))
+               → X1 ≡ X2
+
 loop-cancel Γ Γᵗ W1 W2 X1 X2 b c cmd1 cmd2
   with (W1 + X1) in eq1 | (W2 + X2) in eq2
 loop-cancel Γ Γᵗ W1 W2 X1 X2 b c (TLF .b .c x .W1)
@@ -365,14 +378,6 @@ loop-cancel Γ Γᵗ W1 W2 X1 X2 b c (TLT .b .c x .W1 W' cmd1)
     with +-cancelˡ-≡ W2 eq2 | +-cancelˡ-≡ W1 eq1
 ... | refl | refl = refl
 
-ife-cancel : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
-               → (Γᵗ : String → ℕ)
-               → ∀ (W1 W2 X1 X2 : ℕ)
-               → (b : Bexp {ℕ})
-               → (t e : Cmd {ℕ}) 
-               → (Γ , Γᵗ , W1 =[ ( IF b THEN t ELSE e END ) ]=> (W1 + X1))
-               → (Γ , Γᵗ , W2 =[ ( IF b THEN t ELSE e END ) ]=> (W2 + X2))
-               → X1 ≡ X2
 ife-cancel Γ Γᵗ W1 W2 X1 X2 b t e p1 p2 with (W1 + X1) in eq1
   | (W2 + X2) in eq2
 ife-cancel Γ Γᵗ W1 W2 X1 X2 b t e (TIFT n1 .b .t .e .W1 W' W'' x p1 p3)
@@ -394,13 +399,6 @@ ife-cancel Γ Γᵗ W1 W2 X1 X2 b t e (TIFE n1 .b .t .e .W1 W' W'' x p1 p3)
   | +-cancelˡ-≡ W1 eq1 | eq-cancel Γ Γᵗ e W1 W2 W'' W'''' p3 p4
 ... | refl | refl | refl = refl
 
-seq-cancel : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
-               → (Γᵗ : String → ℕ)
-               → ∀ (W1 W2 X1 X2 : ℕ)
-               → (c1 c2 : Cmd {ℕ}) 
-               → (Γ , Γᵗ , W1 =[ ( c1 ¿ c2) ]=> (W1 + X1))
-               → (Γ , Γᵗ , W2 =[ ( c1 ¿ c2) ]=> (W2 + X2))
-               → X1 ≡ X2
 seq-cancel Γ Γᵗ W1 W2 X1 X2 c1 c2 p1 p2 with (W1 + X1) in eq1
   | (W2 + X2) in eq2
 seq-cancel Γ Γᵗ W1 W2 X1 X2 c1 c2 (TSEQ .c1 .c2 .W1 W' W'' p1 p3)
@@ -419,13 +417,24 @@ seq-cancel Γ Γᵗ W1 W2 X1 X2 c1 c2 (TSEQ .c1 .c2 .W1 W' W'' p1 p3)
    with eq-cancel Γ Γᵗ c2 l m W'' W'''' p3 p4
 ... | refl  = refl
 
+eq-cancel Γ Γᵗ SKIP W1 W2 X1 X2 p1 p2 = skip-cancel Γ Γᵗ W1 W2 X1 X2 p1 p2
+eq-cancel Γ Γᵗ (Var x := r) W1 W2 X1 X2 p1 p2
+  = assign-cancel Γ Γᵗ W1 W2 X1 X2 x r p1 p2
+eq-cancel Γ Γᵗ (c ; c₁) W1 W2 X1 X2 p1 p2
+  = seq-cancel Γ Γᵗ W1 W2 X1 X2 c c₁ p1 p2
+eq-cancel Γ Γᵗ IF b THEN c ELSE c₁ END W1 W2 X1 X2 p1 p2
+  = ife-cancel Γ Γᵗ W1 W2 X1 X2 b c c₁ p1 p2
+eq-cancel Γ Γᵗ WHILE b DO c END W1 W2 X1 X2 p1 p2
+  = loop-cancel Γ Γᵗ W1 W2 X1 X2 b c p1 p2
+
+-- TODO: The function call case and concurrency cases will go here
 
 -- Soundness theorem for Seq WCET rule
 seq-sound : (Γ : String → Maybe (TProgTuple {ℕ}))
             → (Γᵗ : String → ℕ)
             → (c1 c2 : Cmd {ℕ})
             → (W X1 X2 W' : ℕ)
-            → (cmd : Γ , Γᵗ , W =[ c1 ¿ c2 ]=> W')
+            → (cmd : Γ , Γᵗ , W =[ c1 ; c2 ]=> W')
             → (p1 : Γ , Γᵗ , W =[ c1 ]=> (W + X1))
             → (p2 : Γ , Γᵗ , W =[ c2 ]=> (W + X2))
             → (W' ≡ W + (X1 + X2))
@@ -466,8 +475,7 @@ if-helper2 X1 X2 with (X1 ≤? X2)
 if-helper2 X1 X2 | false Relation.Nullary.because Relation.Nullary.ofⁿ ¬p
   with ≤-rela1 X1 X2 (¬p)
 ... | q = ≤-rela2 X1 X2 q
-if-helper2 X1 X2 | true Relation.Nullary.because _
-  = ≤′⇒≤ ≤′-refl
+if-helper2 X1 X2 | true Relation.Nullary.because _ = ≤′⇒≤ ≤′-refl
 
 -- Soundness theorem for If-else WCET rule
 ife-sound : (Γ : String → Maybe (TProgTuple {ℕ}))
@@ -566,5 +574,7 @@ func-sound Γ Γᵗ fname W .(W + W' + getProgTimeT (Γ fname) + W''')
                    + getProgTimeT (Γ fname)) m
 ... | refl = refl
 
--- Then do exec statement for 1 function call
+-- The case of concurrent function calls. Follow the same idea as
+-- Mendler. We have wcet for each funccall and the overhead of fork and
+-- join?
 

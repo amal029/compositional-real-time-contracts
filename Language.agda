@@ -105,7 +105,7 @@ data FuncCall {A : Set} : Set where
 data Cmd {A : Set} : Set where
   SKIP : Cmd
   _:=_ : (l : VarId) → (r : Aexp {A}) → Cmd
-  _¿_ : (c1 c2 : Cmd {A}) → Cmd
+  _;_ : (c1 c2 : Cmd {A}) → Cmd
   IF_THEN_ELSE_END : (b : Bexp {A}) → (t : Cmd {A}) →
                    (c : Cmd {A}) → Cmd
   WHILE_DO_END : (b : Bexp {A}) → (bo : Cmd {A}) → Cmd
@@ -127,11 +127,11 @@ data FuncDef {A : Set} : Set where
 -- This should be an topeval function KP => st
 data Top {A : Set} : Set where
   MAIN:_END :  (c : Cmd {A}) → Top
-  _¿_ : FuncDef {A} → (a : Top {A}) → Top
+  _;_ : FuncDef {A} → (a : Top {A}) → Top
   
 
 infix 22 _:=_
-infixl 21 _¿_ 
+infixl 21 _;_ 
 infixl 20 _||`_
 infixl 20 _//`_
 infixl 23 _-`_
@@ -142,23 +142,23 @@ infixl 25 _,`_                  -- Highest precedence and left assoc
 -- Example of a program with multiple functions
 Main : Top
 Main = DEF "Factorial" < Arg "K" >⇒< Ret "fact" ,` Ret "K" >:
-            Var "n" := Avar "K" ¿
-            Var "fact" := Anum 1 ¿
+            Var "n" := Avar "K" ;
+            Var "fact" := Anum 1 ;
             WHILE (Avar "n" >` Anum 0) DO
-              Var "fact" := Avar "fact" *` Avar "n" ¿
+              Var "fact" := Avar "fact" *` Avar "n" ;
               Var "n" := Avar "n" -` Anum 1
-            END ¿
-            Var "res" := Anum 0 ¿
+            END ;
+            Var "res" := Anum 0 ;
             IF ((Avar "K" ≡` Anum 4) &&` (Avar "fact" ≡` Anum 24)) THEN
               Var "res" := Anum 1
             ELSE
               Var "res" := Anum 0
             END
-       END ¿
+       END ;
        MAIN:
-        Var "K" := Anum 4 ¿
+        Var "K" := Anum 4 ;
         -- The below 2 have to be declared before being used
-        Var "fact" := Anum 0 ¿
+        Var "fact" := Anum 0 ;
         -- We should also have a tuple with each function/thread for
         -- pre-post.
         EXEC < Ret "fact" ,` Ret "K" >:= "Factorial" < Arg "K" >
@@ -240,7 +240,7 @@ mutual
          Γ , st =[ c1 ]=> st' →
          Γ , st' =[ c2 ]=> st'' →
          -----------------------------------------------------------
-         Γ , st =[ (c1 ¿ c2)]=> st''
+         Γ , st =[ (c1 ; c2)]=> st''
 
   CIFT : ∀ (st st' : (String →  ℕ)) → (b : Bexp {ℕ}) →
          (t e : Cmd {ℕ}) →
@@ -309,7 +309,7 @@ evalProg : {A : Set} → (p : Top {A}) →
            (st : String → Maybe (ProgTuple {A})) →
            (String → Maybe (ProgTuple {A}))
 evalProg MAIN: c END st = (StoreP st "MAIN" (Arg "void" , Ret "void" , c))
-evalProg (DEF f < x >⇒< x1 >: c END ¿ p) st =
+evalProg (DEF f < x >⇒< x1 >: c END ; p) st =
               StoreP (evalProg p st) f (x , x1 , c)
 
 -- Example of relation on ℕ
@@ -585,11 +585,11 @@ data _,≪_≫_≪_≫ (Γ : String → Maybe (ProgTuple {ℕ})) : Bexp {ℕ}
          → (c1 c2 : Cmd {ℕ})
          → (P Q : Bexp {ℕ})
          → st |= P
-         → Γ , st =[ c1 ¿ c2 ]=> st'
+         → Γ , st =[ c1 ; c2 ]=> st'
          → st' |= Q
          →
          -----------------------------------------------------------
-         Γ ,≪ P ≫ (c1 ¿ c2) ≪ Q ≫
+         Γ ,≪ P ≫ (c1 ; c2) ≪ Q ≫
 
 
 -- The sequence rule soundness theorem
@@ -603,7 +603,7 @@ seq-theorem : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
               → st |= P
               → st' |= Q
               → st'' |= R
-              → Γ ,≪ P ≫ c1 ¿ c2 ≪ R ≫
+              → Γ ,≪ P ≫ c1 ; c2 ≪ R ≫
 seq-theorem Γ st st' st'' c1 c2 P Q R sc1 sc2 p _ r
   = HSEQ st st'' c1 c2 P R p (CSEQ st st' st'' c1 c2 sc1 sc2) r
 
@@ -654,7 +654,7 @@ mutual
                            → st' ≡ st''
  deterministic-exec-theorem Γ st .st .st .SKIP (CSKIP .st) (CSKIP .st) = refl
  deterministic-exec-theorem Γ st .(Store st x (aeval st e)) .(Store st x (aeval st e)) .(Var x := e) (CASSIGN .st x e) (CASSIGN .st .x .e) = refl
- deterministic-exec-theorem Γ st st' st'' .(c1 ¿ c2) (CSEQ .st st''' .st' c1 c2 e1 e3) (CSEQ .st st'''' .st'' .c1 .c2 e2 e4) with deterministic-exec-theorem Γ st st''' st'''' c1 e1 e2
+ deterministic-exec-theorem Γ st st' st'' .(c1 ; c2) (CSEQ .st st''' .st' c1 c2 e1 e3) (CSEQ .st st'''' .st'' .c1 .c2 e2 e4) with deterministic-exec-theorem Γ st st''' st'''' c1 e1 e2
  ... | refl  with deterministic-exec-theorem Γ st''' st'' st' c2 e4 e3
  ... | refl = refl
  deterministic-exec-theorem Γ st st' st'' .(IF b THEN t ELSE e END) (CIFT .st .st' b t e x e1) (CIFT .st .st'' .b .t .e x₁ e2) with deterministic-exec-theorem Γ st st'' st' t e2 e1
@@ -682,7 +682,7 @@ seq-theorem1 : ∀ (Γ : String → Maybe (ProgTuple {ℕ}))
               → st1 |= P
               → st2 |= Q
               → st3 |= R
-              → Γ , st1 =[ c1 ¿ c2 ]=> st4
+              → Γ , st1 =[ c1 ; c2 ]=> st4
               → st4 |= R
 seq-theorem1 Γ st1 st2 st3 st4 c1 c2 P Q R ec1 ec2 st1p st2q st3r (CSEQ .st1 st' .st4 .c1 .c2 ec12 ec13) with deterministic-exec-theorem Γ st1 st2 st' c1 ec1 ec12
 ... | refl with deterministic-exec-theorem Γ st2 st3 st4 c2 ec2 ec13
