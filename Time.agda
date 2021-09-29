@@ -337,15 +337,16 @@ assign-exec-time Γ Γᵗ W1 W2 .(Γᵗ S + aeval Γᵗ e) X2 S e (TASSIGN .S n 
 -- and below technique for all command cases!
 
 -- XXX: I will do this at the end because other commands remain.
-postulate eq-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
+postulate eq-cancel : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γᵗ : String → ℕ)
                → ∀ (c : Cmd {ℕ})
                → ∀ (W1 W2 X1 X2 : ℕ)
                → (Γ , Γᵗ , W1 =[ c ]=> (W1 + X1))
                → (Γ , Γᵗ , W2 =[ c ]=> (W2 + X2))
                → X1 ≡ X2
--- eq-exec-time Γ Γᵗ c W1 W2 X1 X2 p1 p2 = {!!}
-loop-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
+-- eq-cancel Γ Γᵗ c W1 W2 X1 X2 p1 p2 = {!!}
+
+loop-cancel : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γᵗ : String → ℕ)
                → ∀ (W1 W2 X1 X2 : ℕ)
                → (b : Bexp {ℕ})
@@ -353,32 +354,33 @@ loop-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γ , Γᵗ , W1 =[ (WHILE b DO c END) ]=> (W1 + X1))
                → (Γ , Γᵗ , W2 =[ (WHILE b DO c END) ]=> (W2 + X2))
                → X1 ≡ X2
-loop-exec-time Γ Γᵗ W1 W2 X1 X2 b c cmd1 cmd2 with (W1 + X1) in eq1 | (W2 + X2) in eq2
-loop-exec-time Γ Γᵗ W1 W2 X1 X2 b c (TLF .b .c x .W1)
+loop-cancel Γ Γᵗ W1 W2 X1 X2 b c cmd1 cmd2
+  with (W1 + X1) in eq1 | (W2 + X2) in eq2
+loop-cancel Γ Γᵗ W1 W2 X1 X2 b c (TLF .b .c x .W1)
   (TLF .b .c x₁ .W2) | .(W1 + 0 + tbeval Γᵗ b) | .(W2 + 0 + tbeval Γᵗ b)
   rewrite +-assoc W1 0 (tbeval Γᵗ b) | +-assoc W2 0 (tbeval Γᵗ b)
   with +-cancelˡ-≡ W1 eq1 | +-cancelˡ-≡ W2 eq2
 ... | refl | refl = refl
-loop-exec-time Γ Γᵗ W1 W2 X1 X2 b c (TLF .b .c x .W1)
+loop-cancel Γ Γᵗ W1 W2 X1 X2 b c (TLF .b .c x .W1)
   (TLT .b .c x₁ .W2 W' cmd2) | .(W1 + 0 + tbeval Γᵗ b)
   | .(W2 + Γᵗ "loop-count" * (W' + tbeval Γᵗ b) + tbeval Γᵗ b)
   = ⊥-elim (contradiction-lemma b Γᵗ x₁ x)
-loop-exec-time Γ Γᵗ W1 W2 X1 X2 b c (TLT .b .c x .W1 W' cmd1)
+loop-cancel Γ Γᵗ W1 W2 X1 X2 b c (TLT .b .c x .W1 W' cmd1)
   (TLF .b .c x₁ .W2)
   | .(W1 + Γᵗ "loop-count" * (W' + tbeval Γᵗ b) + tbeval Γᵗ b)
   | .(W2 + 0 + tbeval Γᵗ b) = ⊥-elim (contradiction-lemma b Γᵗ x x₁)
-loop-exec-time Γ Γᵗ W1 W2 X1 X2 b c (TLT .b .c x .W1 W' cmd1)
+loop-cancel Γ Γᵗ W1 W2 X1 X2 b c (TLT .b .c x .W1 W' cmd1)
   (TLT .b .c x₁ .W2 W'' cmd2)
   | .(W1 + Γᵗ "loop-count" * (W' + tbeval Γᵗ b) + tbeval Γᵗ b)
   | .(W2 + Γᵗ "loop-count" * (W'' + tbeval Γᵗ b) + tbeval Γᵗ b)
-  with eq-exec-time Γ Γᵗ c W1 W2 W' W'' cmd1 cmd2
+  with eq-cancel Γ Γᵗ c W1 W2 W' W'' cmd1 cmd2
 ... | refl with (Γᵗ "loop-count") | (tbeval Γᵗ b)
 ... | LC | BC rewrite +-assoc W2 (LC * (W' + BC)) BC
     | +-assoc W1 (LC * (W' + BC)) BC
     with +-cancelˡ-≡ W2 eq2 | +-cancelˡ-≡ W1 eq1
 ... | refl | refl = refl
 
-ife-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
+ife-cancel : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γᵗ : String → ℕ)
                → ∀ (W1 W2 X1 X2 : ℕ)
                → (b : Bexp {ℕ})
@@ -386,56 +388,50 @@ ife-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γ , Γᵗ , W1 =[ ( IF b THEN t ELSE e END ) ]=> (W1 + X1))
                → (Γ , Γᵗ , W2 =[ ( IF b THEN t ELSE e END ) ]=> (W2 + X2))
                → X1 ≡ X2
-ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e p1 p2 with (W1 + X1) in eq1
+ife-cancel Γ Γᵗ W1 W2 X1 X2 b t e p1 p2 with (W1 + X1) in eq1
   | (W2 + X2) in eq2
-ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFT n1 .b .t .e .W1 W' W'' x p1 p3)
+ife-cancel Γ Γᵗ W1 W2 X1 X2 b t e (TIFT n1 .b .t .e .W1 W' W'' x p1 p3)
   (TIFT n2 .b .t .e .W2 W''' W'''' x₁ p2 p4) | .(W1 + W' + tbeval Γᵗ b)
-  | .(W2 + W''' + tbeval Γᵗ b) with eq-exec-time Γ Γᵗ t W1 W2 W' W''' p1 p2
+  | .(W2 + W''' + tbeval Γᵗ b) with eq-cancel Γ Γᵗ t W1 W2 W' W''' p1 p2
 ... | refl rewrite +-assoc W2 W' (tbeval Γᵗ b) | +-assoc W1 W' (tbeval Γᵗ b)
   with +-cancelˡ-≡ W2 eq2 | +-cancelˡ-≡ W1 eq1
 ... | refl | refl = refl
-ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFT n1 .b .t .e .W1 W' W'' x p1 p3)
+ife-cancel Γ Γᵗ W1 W2 X1 X2 b t e (TIFT n1 .b .t .e .W1 W' W'' x p1 p3)
   (TIFE n2 .b .t .e .W2 W''' W'''' x₁ p2 p4) | .(W1 + W' + tbeval Γᵗ b)
   | .(W2 + W'''' + tbeval Γᵗ b) = ⊥-elim (contradiction-lemma b Γᵗ x x₁)
-ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFE n1 .b .t .e .W1 W' W'' x p1 p3)
+ife-cancel Γ Γᵗ W1 W2 X1 X2 b t e (TIFE n1 .b .t .e .W1 W' W'' x p1 p3)
   (TIFT n2 .b .t .e .W2 W''' W'''' x₁ p2 p4) | .(W1 + W'' + tbeval Γᵗ b)
   | .(W2 + W''' + tbeval Γᵗ b) = ⊥-elim (contradiction-lemma b Γᵗ x₁ x)
-ife-exec-time Γ Γᵗ W1 W2 X1 X2 b t e (TIFE n1 .b .t .e .W1 W' W'' x p1 p3)
+ife-cancel Γ Γᵗ W1 W2 X1 X2 b t e (TIFE n1 .b .t .e .W1 W' W'' x p1 p3)
   (TIFE n2 .b .t .e .W2 W''' W'''' x₁ p2 p4) | .(W1 + W'' + tbeval Γᵗ b)
   | .(W2 + W'''' + tbeval Γᵗ b) rewrite +-assoc W1 W'' (tbeval Γᵗ b)
   | +-assoc W2 W'''' (tbeval Γᵗ b) with +-cancelˡ-≡ W2 eq2
-  | +-cancelˡ-≡ W1 eq1 | eq-exec-time Γ Γᵗ e W1 W2 W'' W'''' p3 p4
+  | +-cancelˡ-≡ W1 eq1 | eq-cancel Γ Γᵗ e W1 W2 W'' W'''' p3 p4
 ... | refl | refl | refl = refl
 
-seq-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
+seq-cancel : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γᵗ : String → ℕ)
                → ∀ (W1 W2 X1 X2 : ℕ)
                → (c1 c2 : Cmd {ℕ}) 
                → (Γ , Γᵗ , W1 =[ ( c1 ¿ c2) ]=> (W1 + X1))
                → (Γ , Γᵗ , W2 =[ ( c1 ¿ c2) ]=> (W2 + X2))
                → X1 ≡ X2
-seq-exec-time Γ Γᵗ W1 W2 X1 X2 c1 c2 p1 p2 with (W1 + X1) in eq1
+seq-cancel Γ Γᵗ W1 W2 X1 X2 c1 c2 p1 p2 with (W1 + X1) in eq1
   | (W2 + X2) in eq2
-seq-exec-time Γ Γᵗ W1 W2 X1 X2 c1 c2 (TSEQ .c1 .c2 .W1 W' W'' p1 p3)
+seq-cancel Γ Γᵗ W1 W2 X1 X2 c1 c2 (TSEQ .c1 .c2 .W1 W' W'' p1 p3)
   (TSEQ .c1 .c2 .W2 W''' W'''' p2 p4)
   | .(W1 + (W' + W'')) | .(W2 + (W''' + W''''))
   rewrite +-cancelˡ-≡ W1 eq1 | +-cancelˡ-≡ W2 eq2
-  with eq-exec-time Γ Γᵗ c1 W1 W2 W' W''' p1 p2
+  with eq-cancel Γ Γᵗ c1 W1 W2 W' W''' p1 p2
 ... | refl
   rewrite 
      +-comm W'''  W''
-     | +-comm W1 (W'' + W''')
-     | +-assoc W'' W'''  W1
-     | +-comm W''' W1
-     | +-comm W'' (W1 + W''')
-     | +-comm W'''  W''''
-     | +-comm W2 (W'''' + W''')
-     | +-assoc W'''' W'''  W2
-     | +-comm W''' W2
-     | +-comm W'''' (W2 + W''')
+     | +-comm W1 (W'' + W''') | +-assoc W'' W'''  W1 | +-comm W''' W1
+     | +-comm W'' (W1 + W''') | +-comm W'''  W'''' | +-comm W2 (W'''' + W''')
+     | +-assoc W'''' W'''  W2 | +-comm W''' W2 | +-comm W'''' (W2 + W''')
    with (W1 + W''') | (W2 + W''')
 ... | l | m
-   with eq-exec-time Γ Γᵗ c2 l m W'' W'''' p3 p4
+   with eq-cancel Γ Γᵗ c2 l m W'' W'''' p3 p4
 ... | refl  = refl
 
 
@@ -455,7 +451,7 @@ seq-sound Γ Γᵗ c1 c2 W X1 X2 .(W + (W' + W''))
 ... | refl rewrite +-comm W (X1 + W'') | +-comm X1 W'' | +-assoc W'' X1 W
     | +-comm X1 W | +-comm W'' (W + X1) | +-comm X1 X2 | +-comm W (X2 + X1)
     | +-assoc X2 X1 W | +-comm X2 (X1 + W) | +-comm X1 W with (W + X1)
-... | rl with eq-exec-time Γ Γᵗ c2 rl W W'' X2 cmd₁ p2
+... | rl with eq-cancel Γ Γᵗ c2 rl W W'' X2 cmd₁ p2
 ... | refl = refl
 
 
@@ -485,7 +481,7 @@ if-helper2 X1 X2 with (X1 ≤? X2)
 if-helper2 X1 X2 | false Relation.Nullary.because Relation.Nullary.ofⁿ ¬p
   with ≤-rela1 X1 X2 (¬p)
 ... | q = ≤-rela2 X1 X2 q
-if-helper2 X1 X2 | true Relation.Nullary.because Relation.Nullary.ofʸ p
+if-helper2 X1 X2 | true Relation.Nullary.because _
   = ≤′⇒≤ ≤′-refl
 
 -- Soundness theorem for If-else WCET rule
@@ -569,7 +565,8 @@ func-sound : (Γ : String → Maybe (TProgTuple {ℕ})) → ∀ (Γᵗ : String 
              → ∀ (fname : String) → ∀ (W W' : ℕ)
              → Γ , Γᵗ , W =[ < getProgRetsT (Γ fname) >:=
                              fname < getProgArgsT (Γ fname) > ]=>ᶠ W'
-             → W' ≡ (W + ((numargs $ getProgArgsT $ (Γ fname)) * (Γᵗ "arg-copy"))
+             → W' ≡ (W +
+                       ((numargs $ getProgArgsT $ (Γ fname)) * (Γᵗ "arg-copy"))
                     + (getProgTimeT (Γ fname))
                     + ((numrets $ getProgRetsT $ (Γ fname)) * (Γᵗ "ret-copy")))
 func-sound Γ Γᵗ fname W .(W + W' + getProgTimeT (Γ fname) + W''')
