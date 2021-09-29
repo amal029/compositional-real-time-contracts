@@ -345,13 +345,44 @@ postulate eq-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γ , Γᵗ , W2 =[ c ]=> (W2 + X2))
                → X1 ≡ X2
 -- eq-exec-time Γ Γᵗ c W1 W2 X1 X2 p1 p2 = {!!}
+loop-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
+               → (Γᵗ : String → ℕ)
+               → ∀ (W1 W2 X1 X2 : ℕ)
+               → (b : Bexp {ℕ})
+               → (c : Cmd {ℕ}) 
+               → (Γ , Γᵗ , W1 =[ (WHILE b DO c END) ]=> (W1 + X1))
+               → (Γ , Γᵗ , W2 =[ (WHILE b DO c END) ]=> (W2 + X2))
+               → X1 ≡ X2
+loop-exec-time Γ Γᵗ W1 W2 X1 X2 b c cmd1 cmd2 with (W1 + X1) in eq1 | (W2 + X2) in eq2
+loop-exec-time Γ Γᵗ W1 W2 X1 X2 b c (TLF .b .c x .W1)
+  (TLF .b .c x₁ .W2) | .(W1 + 0 + tbeval Γᵗ b) | .(W2 + 0 + tbeval Γᵗ b)
+  rewrite +-assoc W1 0 (tbeval Γᵗ b) | +-assoc W2 0 (tbeval Γᵗ b)
+  with +-cancelˡ-≡ W1 eq1 | +-cancelˡ-≡ W2 eq2
+... | refl | refl = refl
+loop-exec-time Γ Γᵗ W1 W2 X1 X2 b c (TLF .b .c x .W1)
+  (TLT .b .c x₁ .W2 W' cmd2) | .(W1 + 0 + tbeval Γᵗ b)
+  | .(W2 + Γᵗ "loop-count" * (W' + tbeval Γᵗ b) + tbeval Γᵗ b)
+  = ⊥-elim (contradiction-lemma b Γᵗ x₁ x)
+loop-exec-time Γ Γᵗ W1 W2 X1 X2 b c (TLT .b .c x .W1 W' cmd1)
+  (TLF .b .c x₁ .W2)
+  | .(W1 + Γᵗ "loop-count" * (W' + tbeval Γᵗ b) + tbeval Γᵗ b)
+  | .(W2 + 0 + tbeval Γᵗ b) = ⊥-elim (contradiction-lemma b Γᵗ x x₁)
+loop-exec-time Γ Γᵗ W1 W2 X1 X2 b c (TLT .b .c x .W1 W' cmd1)
+  (TLT .b .c x₁ .W2 W'' cmd2)
+  | .(W1 + Γᵗ "loop-count" * (W' + tbeval Γᵗ b) + tbeval Γᵗ b)
+  | .(W2 + Γᵗ "loop-count" * (W'' + tbeval Γᵗ b) + tbeval Γᵗ b)
+  with eq-exec-time Γ Γᵗ c W1 W2 W' W'' cmd1 cmd2
+... | refl with (Γᵗ "loop-count") | (tbeval Γᵗ b)
+... | LC | BC rewrite +-assoc W2 (LC * (W' + BC)) BC
+    | +-assoc W1 (LC * (W' + BC)) BC
+    with +-cancelˡ-≡ W2 eq2 | +-cancelˡ-≡ W1 eq1
+... | refl | refl = refl
 
 ife-exec-time : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γᵗ : String → ℕ)
                → ∀ (W1 W2 X1 X2 : ℕ)
                → (b : Bexp {ℕ})
                → (t e : Cmd {ℕ}) 
-               -- XXX: Note that these two are the same statement here
                → (Γ , Γᵗ , W1 =[ ( IF b THEN t ELSE e END ) ]=> (W1 + X1))
                → (Γ , Γᵗ , W2 =[ ( IF b THEN t ELSE e END ) ]=> (W2 + X2))
                → X1 ≡ X2
