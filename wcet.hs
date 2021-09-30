@@ -18,10 +18,10 @@ data Bexp =
   | FALSE
   | And Bexp Bexp
   | Or Bexp Bexp
-  | Lth Aexp Aexp
-  | Gth Aexp Aexp
-  | LEQ Aexp Aexp
-  | GEQ Aexp Aexp
+  | Lt Aexp Aexp
+  | Gt Aexp Aexp
+  | Leq Aexp Aexp
+  | Geq Aexp Aexp
   | Not Bexp
   deriving (Show)
 
@@ -80,10 +80,10 @@ wcet_bexp TRUE = 1
 wcet_bexp FALSE = 1
 wcet_bexp (And l r) = wcet_bexp l + wcet_bexp r + 1
 wcet_bexp (Or l r) = wcet_bexp l + wcet_bexp r + 1
-wcet_bexp (Lth l r) = wcet_aexp l + wcet_aexp r + 1
-wcet_bexp (Gth l r) = wcet_aexp l + wcet_aexp r + 1
-wcet_bexp (LEQ l r) = wcet_aexp l + wcet_aexp r + 1
-wcet_bexp (GEQ l r) = wcet_aexp l + wcet_aexp r + 1
+wcet_bexp (Lt l r) = wcet_aexp l + wcet_aexp r + 1
+wcet_bexp (Gt l r) = wcet_aexp l + wcet_aexp r + 1
+wcet_bexp (Leq l r) = wcet_aexp l + wcet_aexp r + 1
+wcet_bexp (Geq l r) = wcet_aexp l + wcet_aexp r + 1
 wcet_bexp (Not r) = wcet_bexp r + 1
 
 
@@ -112,7 +112,7 @@ program = Assign "X" (Anum 10)
           `Seq`
           Assign "X" (Plus (Avar "X") (Anum 1))
           `Seq`
-          Ite (Lth (Avar "X") (Anum 10))
+          Ite (Lt (Avar "X") (Anum 10))
           (Assign "X" (Plus (Anum 2) (Avar "X")))
           (Assign "X" (Minus (Avar "X") (Anum 2)))
           `Seq`
