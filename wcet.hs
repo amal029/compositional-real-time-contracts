@@ -37,7 +37,6 @@ numars (RComma l r) = numars l + numars r
 
 data FuncCall =
   FCall String ARs Statements ARs
-  --XXX: The last two Ints are fork time and join time
   | PAR FuncCall FuncCall
   deriving (Show)
 
@@ -49,7 +48,7 @@ wcet_func (FCall _ a s r) = store * (numars a) + store * (numars r)
     --XXX: The number of clock cycles needed to copy each arg and ret
     --across stacks.
     store = 1
-wcet_func (PAR f1 f2) = ft1 `par` (ft2 `pseq` (ft1 + ft2)) + ft + jt
+wcet_func (PAR f1 f2) = ft1 `par` (ft2 `pseq` (ft1 `max` ft2)) + ft + jt
   where
     ft1 = wcet_func f1
     ft2 = wcet_func f2
@@ -63,7 +62,7 @@ data Statements =
   | Assign String Aexp
   | Seq Statements Statements
   | Ite Bexp Statements Statements
-  | LOOP Bexp Statements Int -- Here Int is the max loop count
+  | Loop Bexp Statements Int -- Here Int is the max loop count
   | Exec FuncCall
   deriving (Show)
 
@@ -95,11 +94,11 @@ compute_wcet (Seq l r) = lw `par` (rw `pseq` (lw + rw))
   where
     lw = compute_wcet l
     rw = compute_wcet r
-compute_wcet (Ite b t e) = wcet_bexp b + lt `par` (et `pseq` lt + et)
+compute_wcet (Ite b t e) = wcet_bexp b + lt `par` (et `pseq` lt `max` et)
   where
     lt = compute_wcet t
     et = compute_wcet e
-compute_wcet (LOOP b c w) = ct + (wcet_bexp b) * (w + 1)
+compute_wcet (Loop b c w) = ct + (wcet_bexp b) * (w + 1)
   where
     ct = (compute_wcet c) * w
 --XXX: This is the not the same as compositional Hoare, because I am
