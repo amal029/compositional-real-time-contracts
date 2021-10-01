@@ -9,6 +9,7 @@ data Aexp =
   Plus Aexp Aexp
   | Minus Aexp Aexp
   | Mult Aexp Aexp
+  | Div Aexp Aexp
   | Avar String
   | Anum Int
   deriving (Show)
@@ -19,6 +20,7 @@ data Bexp =
   | And Bexp Bexp
   | Or Bexp Bexp
   | Lt Aexp Aexp
+  | Eq Aexp Aexp
   | Gt Aexp Aexp
   | Leq Aexp Aexp
   | Geq Aexp Aexp
@@ -70,6 +72,7 @@ wcet_aexp :: Aexp -> Int
 wcet_aexp (Plus l r) = wcet_aexp l + wcet_aexp r + 1
 wcet_aexp (Minus l r) = wcet_aexp l + wcet_aexp r + 1
 wcet_aexp (Mult l r) = wcet_aexp l + wcet_aexp r + 1
+wcet_aexp (Div l r) = wcet_aexp l + wcet_aexp r + 1
 wcet_aexp (Avar _) = 1
 wcet_aexp (Anum _) = 1
 
@@ -81,6 +84,7 @@ wcet_bexp (Or l r) = wcet_bexp l + wcet_bexp r + 1
 wcet_bexp (Lt l r) = wcet_aexp l + wcet_aexp r + 1
 wcet_bexp (Gt l r) = wcet_aexp l + wcet_aexp r + 1
 wcet_bexp (Leq l r) = wcet_aexp l + wcet_aexp r + 1
+wcet_bexp (Eq l r) = wcet_aexp l + wcet_aexp r + 1
 wcet_bexp (Geq l r) = wcet_aexp l + wcet_aexp r + 1
 wcet_bexp (Not r) = wcet_bexp r + 1
 
@@ -156,6 +160,24 @@ nested_if =
     Assign "Z" (Plus (Avar "X") (Anum 1))
   )
 
+--XXX: We are not cutting out infeasible paths, so the WCET can be a
+--large over-estimate. XXX: Another example from Tulika' paper
+tulika_ite :: Statements
+tulika_ite =
+  (Ite (Gt (Avar "x") (Anum 3))
+   (Assign "z" (Plus (Avar "z") (Anum 1)))
+   (Assign "x" (Anum 1)))
+  `Seq`
+  (Ite (Eq (Avar "y") (Anum 4))
+   (Assign "y" (Plus (Avar "y") (Anum 1)))
+   (Assign "x" (Anum 1))) 
+  `Seq`
+  (Ite (Lt (Avar "x") (Anum 2))
+   (Assign "z" (Div (Avar "z") (Anum 2)))
+   (Assign "z" (Minus (Avar "z") (Anum 1))))
+
+
+  
 -- This is the main function
 main :: IO ()
 main = do
@@ -163,3 +185,5 @@ main = do
     putStrLn $ show wcet1
   let wcet2 = compute_wcet nested_if in
     putStrLn $ show wcet2
+  let wcet3 = compute_wcet tulika_ite in
+    putStrLn $ show wcet3
