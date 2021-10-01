@@ -25,7 +25,6 @@ data Bexp =
   | Not Bexp
   deriving (Show)
 
-
 data ARs =
   R String
   | RComma ARs ARs
@@ -89,7 +88,9 @@ wcet_bexp (Not r) = wcet_bexp r + 1
 -- This gives the total WCET using Hoare rules
 compute_wcet :: Statements -> Int
 compute_wcet Skip = 0
-compute_wcet (Assign _ e) = wcet_aexp e + 1
+compute_wcet (Assign _ e) = wcet_aexp e + store
+  where
+    store = 1
 compute_wcet (Seq l r) = lw `par` (rw `pseq` (lw + rw)) 
   where
     lw = compute_wcet l
@@ -105,21 +106,60 @@ compute_wcet (Loop b c w) = ct + (wcet_bexp b) * (w + 1)
 --computing the WCET here from the commands inside func
 compute_wcet (Exec func) = wcet_func func
 
--- XXX: Example program
-program :: Statements
-program = Assign "X" (Anum 10)
-          `Seq`
-          Assign "X" (Plus (Avar "X") (Anum 1))
-          `Seq`
-          Ite (Lt (Avar "X") (Anum 10))
-          (Assign "X" (Plus (Anum 2) (Avar "X")))
-          (Assign "X" (Minus (Avar "X") (Anum 2)))
-          `Seq`
-          Skip
+-- XXX: Example program showing that nested loops should account for
+-- number of iterations correctly -- should give the same result at the
+-- original IPET WCET
+ipet_ex1_claire :: Statements
+ipet_ex1_claire =
+  Assign "i" (Anum 0)
+  `Seq`
+  Assign "j" (Anum 0)
+  `Seq`
+  Assign "X" (Anum 0)
+  `Seq`
+  Loop (Lt (Avar "i") (Anum 4))
+  (
+    Assign "X" (Anum 1)
+    `Seq`
+    Loop (Lt (Avar "j") (Anum 5))
+    (
+      Assign "X" (Plus (Avar "i") (Avar "j"))
+      `Seq`
+      Assign "j" (Plus (Avar "j") (Anum 1))
+    ) 5
+    `Seq`
+    Assign "j" (Plus (Avar "i") (Anum 1))
+  ) 4
+
+--XXX: Second example showing that explicit paths can be considered
+--correctly via the rules -- should give the same result at the orignal
+--IPET method for WCET analysis.
+nested_if :: Statements
+nested_if =
+  Assign "X" (Anum 1)
+  `Seq`
+  Assign "Y" (Anum 1)
+  `Seq`
+  Assign "Z" (Anum 1)
+  `Seq`
+  Ite (Lt (Avar "X") (Anum 1))
+  (Ite (Gt (Avar "Y") (Anum 4))
+  ( -- Then branch of inner if
+    Assign "Z" (Anum 1)
+    `Seq`
+    Assign "Z" (Plus (Anum 1) (Anum 6))
+  )
+  ( -- Else branch of inner if
+    Assign "Z" (Anum 4)
+  ))
+  ( --Else branch of outter if
+    Assign "Z" (Plus (Avar "X") (Anum 1))
+  )
 
 -- This is the main function
 main :: IO ()
 main = do
-  let wcet = compute_wcet program in
-    putStrLn $ show wcet
-  putStrLn $ show program
+  let wcet1 = compute_wcet ipet_ex1_claire in
+    putStrLn $ show wcet1
+  let wcet2 = compute_wcet nested_if in
+    putStrLn $ show wcet2
