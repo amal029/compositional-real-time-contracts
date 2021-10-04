@@ -1,3 +1,6 @@
+-- -*- mode: haskell; flycheck-checker: haskell-ghc; -*-
+
+
 --XXX: Change 1 to whatever value you want depending upon the number of
 -- clock cycles the operation takes.
 
@@ -42,21 +45,20 @@ data FuncCall =
   deriving (Show)
 
 -- Computing the wcet for the function call
-wcet_func :: FuncCall -> Int
-wcet_func (FCall _ a s r) = store * (numars a) + store * (numars r)
-                            + compute_wcet s
+wcetFunc :: FuncCall -> Int
+wcetFunc (FCall _ a s r) = store * numars a + store * numars r
+                            + computeWcet s
   where
     --XXX: The number of clock cycles needed to copy each arg and ret
     --across stacks.
     store = 1
-wcet_func (PAR f1 f2) = ft1 `par` (ft2 `pseq` (ft1 `max` ft2)) + ft + jt
+wcetFunc (PAR f1 f2) = ft1 `par` (ft2 `pseq` (ft1 `max` ft2)) + ft + jt
   where
-    ft1 = wcet_func f1
-    ft2 = wcet_func f2
+    ft1 = wcetFunc f1
+    ft2 = wcetFunc f2
     --XXX: These are the number of clock cycles for fork and join
     ft = 1
     jt = 1
-
 
 data Statements =
   Skip
@@ -68,47 +70,46 @@ data Statements =
   deriving (Show)
 
 -- wcet aexp
-wcet_aexp :: Aexp -> Int
-wcet_aexp (Plus l r) = wcet_aexp l + wcet_aexp r + 1
-wcet_aexp (Minus l r) = wcet_aexp l + wcet_aexp r + 1
-wcet_aexp (Mult l r) = wcet_aexp l + wcet_aexp r + 1
-wcet_aexp (Div l r) = wcet_aexp l + wcet_aexp r + 1
-wcet_aexp (Avar _) = 1
-wcet_aexp (Anum _) = 1
+wcetAexp :: Aexp -> Int
+wcetAexp (Plus l r) = wcetAexp l + wcetAexp r + 1
+wcetAexp (Minus l r) = wcetAexp l + wcetAexp r + 1
+wcetAexp (Mult l r) = wcetAexp l + wcetAexp r + 1
+wcetAexp (Div l r) = wcetAexp l + wcetAexp r + 1
+wcetAexp (Avar _) = 1
+wcetAexp (Anum _) = 1
 
-wcet_bexp :: Bexp -> Int
-wcet_bexp TRUE = 1
-wcet_bexp FALSE = 1
-wcet_bexp (And l r) = wcet_bexp l + wcet_bexp r + 1
-wcet_bexp (Or l r) = wcet_bexp l + wcet_bexp r + 1
-wcet_bexp (Lt l r) = wcet_aexp l + wcet_aexp r + 1
-wcet_bexp (Gt l r) = wcet_aexp l + wcet_aexp r + 1
-wcet_bexp (Leq l r) = wcet_aexp l + wcet_aexp r + 1
-wcet_bexp (Eq l r) = wcet_aexp l + wcet_aexp r + 1
-wcet_bexp (Geq l r) = wcet_aexp l + wcet_aexp r + 1
-wcet_bexp (Not r) = wcet_bexp r + 1
-
+wcetBexp :: Bexp -> Int
+wcetBexp TRUE = 1
+wcetBexp FALSE = 1
+wcetBexp (And l r) = wcetBexp l + wcetBexp r + 1
+wcetBexp (Or l r) = wcetBexp l + wcetBexp r + 1
+wcetBexp (Lt l r) = wcetAexp l + wcetAexp r + 1
+wcetBexp (Gt l r) = wcetAexp l + wcetAexp r + 1
+wcetBexp (Leq l r) = wcetAexp l + wcetAexp r + 1
+wcetBexp (Eq l r) = wcetAexp l + wcetAexp r + 1
+wcetBexp (Geq l r) = wcetAexp l + wcetAexp r + 1
+wcetBexp (Not r) = wcetBexp r + 1
 
 -- This gives the total WCET using Hoare rules
-compute_wcet :: Statements -> Int
-compute_wcet Skip = 0
-compute_wcet (Assign _ e) = wcet_aexp e + store
+computeWcet :: Statements -> Int
+computeWcet Skip = 0
+computeWcet (Assign _ e) = wcetAexp e + store
   where
     store = 1
-compute_wcet (Seq l r) = lw `par` (rw `pseq` (lw + rw)) 
+computeWcet (Seq l r) = lw `par` (rw `pseq` (lw + rw)) 
   where
-    lw = compute_wcet l
-    rw = compute_wcet r
-compute_wcet (Ite b t e) = wcet_bexp b + lt `par` (et `pseq` lt `max` et)
+    lw = computeWcet l
+    rw = computeWcet r
+computeWcet (Ite b t e) = wcetBexp b + lt `par` (et `pseq` lt `max` et)
   where
-    lt = compute_wcet t
-    et = compute_wcet e
-compute_wcet (Loop b c w) = ct + (wcet_bexp b) * (w + 1)
+    lt = computeWcet t
+    et = computeWcet e
+computeWcet (Loop b c w) = ct + wcetBexp b * (w + 1)
   where
-    ct = (compute_wcet c) * w
+    ct = computeWcet c * w
 --XXX: This is the not the same as compositional Hoare, because I am
 --computing the WCET here from the commands inside func
-compute_wcet (Exec func) = wcet_func func
+computeWcet (Exec func) = wcetFunc func
 
 -- XXX: Example program showing that nested loops should account for
 -- number of iterations correctly -- should give the same result at the
@@ -138,8 +139,8 @@ ipet_ex1_claire =
 --XXX: Second example showing that explicit paths can be considered
 --correctly via the rules -- should give the same result at the orignal
 --IPET method for WCET analysis.
-nested_if :: Statements
-nested_if =
+nestedIf :: Statements
+nestedIf =
   Assign "X" (Anum 1)
   `Seq`
   Assign "Y" (Anum 1)
@@ -162,28 +163,28 @@ nested_if =
 
 --XXX: We are not cutting out infeasible paths, so the WCET can be a
 --large over-estimate. XXX: Another example from Tulika' paper
-tulika_ite :: Statements
-tulika_ite =
-  (Ite (Gt (Avar "x") (Anum 3))
+tulikaIte :: Statements
+tulikaIte =
+  Ite (Gt (Avar "x") (Anum 3))
    (Assign "z" (Plus (Avar "z") (Anum 1)))
-   (Assign "x" (Anum 1)))
+   (Assign "x" (Anum 1))
   `Seq`
-  (Ite (Eq (Avar "y") (Anum 4))
+  Ite (Eq (Avar "y") (Anum 4))
    (Assign "y" (Plus (Avar "y") (Anum 1)))
-   (Assign "x" (Anum 1))) 
+   (Assign "x" (Anum 1)) 
   `Seq`
-  (Ite (Lt (Avar "x") (Anum 2))
+  Ite (Lt (Avar "x") (Anum 2))
    (Assign "z" (Div (Avar "z") (Anum 2)))
-   (Assign "z" (Minus (Avar "z") (Anum 1))))
+   (Assign "z" (Minus (Avar "z") (Anum 1)))
 
 
   
 -- This is the main function
 main :: IO ()
 main = do
-  let wcet1 = compute_wcet ipet_ex1_claire in
-    putStrLn $ show wcet1
-  let wcet2 = compute_wcet nested_if in
-    putStrLn $ show wcet2
-  let wcet3 = compute_wcet tulika_ite in
-    putStrLn $ show wcet3
+  let wcet1 = computeWcet ipet_ex1_claire in
+    print wcet1
+  let wcet2 = computeWcet nestedIf in
+    print wcet2
+  let wcet3 = computeWcet tulikaIte in
+    print wcet3
