@@ -99,7 +99,7 @@ data FuncCall {A : Set} : Set where
   -- XXX: Note that the below allows writing code like
   -- this: F()||F()//F()
   _||`_ : (l r : FuncCall {A}) → FuncCall
-  _//`_ : (l r : FuncCall {A}) → FuncCall
+  -- _//`_ : (l r : FuncCall {A}) → FuncCall
 
 -- This is the command language that we have
 data Cmd {A : Set} : Set where
@@ -133,7 +133,7 @@ data Top {A : Set} : Set where
 infix 22 _:=_
 infixl 21 _;_ 
 infixl 20 _||`_
-infixl 20 _//`_
+-- infixl 20 _//`_
 infixl 23 _-`_
 infixl 23 _+`_
 infixl 24 _*`_

@@ -187,8 +187,9 @@ mutual
  --       -----------------------------------------------------------
  --       → Γ , st =[ EXEC f ]=> st'
         
- data _,_,_=[_]=>ᶠ_ (Γ : String → (Maybe (TProgTuple {ℕ}))) (st : String → ℕ) :
-                  ℕ → FuncCall {ℕ} → ℕ → Set where
+ data _,_,_=[_]=>ᶠ_ (Γ : String → (Maybe (TProgTuple {ℕ})))
+                    (st : String → ℕ) :
+                    ℕ → FuncCall {ℕ} → ℕ → Set where
 
   Base : ∀ (fname : String) →        -- name of the function
          ∀ (W W' W'' W''' : ℕ)
@@ -208,6 +209,13 @@ mutual
          -----------------------------------------------------------
          → Γ , st , W =[ < getProgRetsT (Γ fname) >:=
              fname < getProgArgsT (Γ fname) > ]=>ᶠ (W + W' + W'' + W''')
+
+  PAR : ∀ (l r : FuncCall {ℕ}) → ∀ (W X1 X2 : ℕ)
+        → Γ , st , W =[ l ]=>ᶠ (W + X1)
+        → Γ , st , W =[ r ]=>ᶠ (W + X2)
+        -----------------------------------------------------------
+        → Γ , st , W =[ l ||` r ]=>ᶠ (W + (max X1 X2) + ((2 * (st "fork"))
+                                        + (2 * (st "join"))))
 
 -- Soundness theorem for SKIP WCET rule
 skip-sound : (Γ : String → Maybe (TProgTuple {ℕ}))
@@ -286,6 +294,45 @@ assign-sound Γ Γᵗ S e W .(W + taeval Γᵗ e + Γᵗ "store") (TASSIGN .S n 
   with Δ-exec Γ Γᵗ W (W + W''') (W + W'''') e x₃ x₅
 ... | y with +-cancelˡ-≡ W y
 ... | refl = refl
+
+
+-- Deterministic execution of a function
+Δ-exec-func : (Γ : String → Maybe (TProgTuple {ℕ}))
+              → (Γᵗ : String → ℕ) → (l : FuncCall {ℕ})
+              → (W W' W'' : ℕ)
+              → Γ , Γᵗ , W =[ l ]=>ᶠ W'
+              → Γ , Γᵗ , W =[ l ]=>ᶠ W''
+              → W' ≡ W''
+Δ-exec-func Γ Γᵗ
+  .(< getProgRetsT (Γ fname) >:= fname < getProgArgsT (Γ fname) >) W
+  .(W + W' + getProgTimeT (Γ fname) + W'''')
+  .(W + W'' + getProgTimeT (Γ fname) + W'''''')
+  (Base fname .W W' .(getProgTimeT (Γ fname)) W'''' x refl x₁ x₂)
+  (Base .fname .W W'' .(getProgTimeT (Γ fname)) W'''''' x₃ refl x₄ x₅)
+  with args-sound Γᵗ (getProgArgsT (Γ fname)) W (W + W') x
+  | args-sound Γᵗ (getProgArgsT (Γ fname)) W (W + W'') x₃
+  | rets-sound Γᵗ (getProgRetsT (Γ fname)) (W + W' + getProgTimeT (Γ fname))
+    (W + W' + getProgTimeT (Γ fname) + W'''') x₂
+  | rets-sound Γᵗ (getProgRetsT (Γ fname)) (W + W'' + getProgTimeT (Γ fname))
+    (W + W'' + getProgTimeT (Γ fname) + W'''''') x₅
+... | l | l1 | r1 | r2
+  with +-cancelˡ-≡ W l | +-cancelˡ-≡ W l1
+... | refl | refl with +-cancelˡ-≡
+  (W + numargs (getProgArgsT (Γ fname)) * Γᵗ "arg-copy"
+  + getProgTimeT (Γ fname)) r2
+... | refl with +-cancelˡ-≡
+  (W + numargs (getProgArgsT (Γ fname)) * Γᵗ "arg-copy"
+  + getProgTimeT (Γ fname)) r1
+... | refl = refl
+Δ-exec-func Γ Γᵗ .(l ||` r) W
+  .(W + max X1 X2 + (2 * Γᵗ "fork" + 2 * Γᵗ "join"))
+  .(W + max X3 X4 + (2 * Γᵗ "fork" + 2 * Γᵗ "join"))
+  (PAR l r .W X1 X2 e1 e3) (PAR .l .r .W X3 X4 e2 e4)
+  with Δ-exec-func Γ Γᵗ l W (W + X1) (W + X3) e1 e2
+  | Δ-exec-func Γ Γᵗ r W (W + X2) (W + X4) e3 e4
+... | m | y with +-cancelˡ-≡ W m | +-cancelˡ-≡ W y
+... | refl | refl = refl
+
 
 skip-cancel : ∀ (Γ : String → Maybe (TProgTuple {ℕ}))
                → (Γᵗ : String → ℕ)
@@ -574,7 +621,22 @@ func-sound Γ Γᵗ fname W .(W + W' + getProgTimeT (Γ fname) + W''')
                    + getProgTimeT (Γ fname)) m
 ... | refl = refl
 
--- The case of concurrent function calls. Follow the same idea as
--- Mendler. We have wcet for each funccall and the overhead of fork and
--- join?
-
+-- The soundness theorem for PAR (||`) execution of threads
+par-sound : (Γ : String → Maybe (TProgTuple {ℕ})) → ∀ (Γᵗ : String → ℕ)
+            → (l r : FuncCall {ℕ}) → (W W' X1 X2 : ℕ)
+            → Γ , Γᵗ , W =[ l ||` r ]=>ᶠ W'
+            → Γ , Γᵗ , W =[ l ]=>ᶠ (W + X1)
+            → Γ , Γᵗ , W =[ r ]=>ᶠ (W + X2)
+            → W' ≡ W + (max X1 X2) + 2 * ((Γᵗ "fork") + (Γᵗ "join"))
+par-sound Γ Γᵗ l r W .(W + max X3 X4 + (2 * Γᵗ "fork" + 2 * Γᵗ "join"))
+  X1 X2 (PAR .l .r .W X3 X4 pare pare₁) parl parr
+  with (Γᵗ "fork") | (Γᵗ "join")
+... | tf | tj rewrite *-distribˡ-+ 2 tf tj
+    | +-assoc tf tj 0 | +-comm tj 0 | +-comm tf 0
+    | +-assoc tf tj (tf + tj) | +-comm tj (tf + tj)
+    | +-assoc tf tj tj | +-comm tf (tf + (tj + tj))
+    | +-comm tf (tj + tj) with (tf + tf + (tj + tj))
+... | m with Δ-exec-func Γ Γᵗ l W (W + X1) (W + X3) parl pare
+... | q with Δ-exec-func Γ Γᵗ r W (W + X2) (W + X4) parr pare₁
+... | q2 with +-cancelˡ-≡ W q | +-cancelˡ-≡ W q2
+... | refl | refl = refl
