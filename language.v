@@ -2,6 +2,7 @@ Require Import Coq.Strings.String.
 Require Import Coq.micromega.Lia.
 Require Import Coq.Arith.PeanoNat.
 Require Import Coq.micromega.Lqa.
+Require Import Coq.Program.Equality.
 
 Definition state {A : Set} := string -> A.
 
@@ -113,7 +114,8 @@ Inductive exec : @state nat -> @state nat -> nat -> cmd -> @ state nat -> nat ->
 
 | Eassign : forall (G st st' : @state nat), forall (W : nat), forall (x : string),
   forall (e : aexp),
-    exec G st W (Assign (Lvar x) e) (Store st x (aeval st e)) (W + (aevalT G e))
+    exec G st W (Assign (Lvar x) e) (Store st x (aeval st e))
+         (W + (aevalT G e) + (lookup G "store"))
 
 | Eseq : forall (G st st' st'' : @state nat), forall (W X1 X2 : nat), forall (c1 c2 : cmd),
     exec G st W c1 st' (W + X1) -> exec G st' (W + X1) c2 st'' (W + X1 + X2)
@@ -122,12 +124,12 @@ Inductive exec : @state nat -> @state nat -> nat -> cmd -> @ state nat -> nat ->
 | EifT : forall (G st st' st'' : @state nat), forall (W X1 X2 : nat), forall (e t : cmd),
   forall (b : bexp), (beval st b = true) -> exec G st W t st' (W + X1) ->
                      exec G st W e st'' (W + X2) -> exec G st W (If b t e) st'
-                                                         (W + X1)
+                                                         (W + X1 + bevalT G b)
 
 | EifF : forall (G st st' st'' : @state nat), forall (W X1 X2 : nat), forall (e t : cmd),
   forall (b : bexp), (beval st b = false) -> exec G st W t st' (W + X1) ->
                      exec G st W e st'' (W + X2) -> exec G st W (If b t e) st''
-                                                         (W + X2)
+                                                         (W + X2 + bevalT G b)
 
 | EwhileF : forall(G st : @state nat), forall (W : nat), forall (c : cmd),
   forall (b : bexp), (beval st b = false)
@@ -238,7 +240,7 @@ Lemma cancel_exec_time : forall (c : cmd),
 Proof.
   induction c.
   (* Skip *)
-  intros. inversion H; inversion H0. subst; lia.
+  intros; inversion H; inversion H0; subst; lia.
   (* assign *)
   intros; inversion H; inversion H0; subst. lia.
   (* Seq *)
@@ -289,7 +291,8 @@ Qed.
 
 Lemma assign_sound: forall(Γ st st' : @state nat), forall (W W' X : nat),
   forall (x : string), forall (e : aexp),
-    exec Γ st W (Assign (Lvar x) e) st' W' -> W' = (W + (aevalT Γ e)).
+    exec Γ st W (Assign (Lvar x) e) st' W' -> W' = (W + (aevalT Γ e) +
+                                                     (lookup Γ "store")).
 Proof.
   intros. inversion H. subst. reflexivity.
 Qed.
@@ -311,7 +314,7 @@ Qed.
 Lemma ife_sound : forall(Γ st st' st'' st''' : @state nat), forall (W W' X1 X2 : nat),
   forall (b : bexp), forall (t e : cmd),
     exec Γ st W t st' (W + X1) -> exec Γ st W e st'' (W + X2)
-    -> exec Γ st W (If b t e) st''' W' -> (W' <= W + Nat.max X1 X2).
+    -> exec Γ st W (If b t e) st''' W' -> (W' <= W + Nat.max X1 X2 + bevalT Γ b).
 Proof.
   intros. inversion H1. subst.
   set (yt := Δ_exec t Γ st st' st''' W (W + X1) (W + X0) H H11).
@@ -337,7 +340,7 @@ Qed.
 Fixpoint compute_wcet (Γ : @state nat) (c : cmd): nat :=
   match c with
   | Skip => 0
-  | Assign lx e => aevalT Γ e
+  | Assign lx e => aevalT Γ e + (lookup Γ "store")
   | Seq c1 c2 => (compute_wcet Γ c1) + (compute_wcet Γ c2)
   | If b t e => Nat.max (compute_wcet Γ t) (compute_wcet Γ e) + (bevalT Γ b)
   | While b c => ((compute_wcet Γ c) + (bevalT Γ b)) * (lookup Γ "loop-count")
@@ -349,7 +352,7 @@ Theorem wcet_sound : forall (Γ st st' : @state nat), forall (c : cmd), forall (
     Γ |= (st , W) =[ c ]=> (st' , W') -> W' <= W + (compute_wcet Γ c).
 Proof.
   intros. induction H. simpl. reflexivity.
-  simpl. reflexivity. simpl; lia. simpl; lia. simpl; lia. simpl; lia. simpl.
+  simpl. lia. simpl; lia. simpl; lia. simpl; lia. simpl; lia. simpl.
   set (yt := lookup G "loop-count"). set (ty := (bevalT G b)).
   rewrite Nat.mul_add_distr_r. rewrite Nat.mul_add_distr_r.
   set (rt := ty * yt). set (er := X1 * yt).
