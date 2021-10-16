@@ -340,12 +340,6 @@ Fixpoint compute_wcet (Γ : @state nat) (c : cmd): nat :=
                 + (bevalT Γ b)
   end.
 
-Lemma wcet_sound_helper : forall {m n p : nat}, m + n <= m + p -> n <= p.
-Proof.
-  lia.
-Qed.
-
-
 (* Now prove that the computed wcet is really the max *)
 Theorem wcet_sound : forall (Γ st st' : @state nat), forall (c : cmd), forall (W W' : nat),
   exec Γ st W c st' W' -> W' <= W + (compute_wcet Γ c).
@@ -366,7 +360,8 @@ Proof.
   set (ll := Nat.add_comm er err). set (lli := Nat.add_comm ui err).
   rewrite  <- Nat.add_assoc. rewrite  <- Nat.add_assoc.
   rewrite ll, lli. rewrite Nat.add_assoc, Nat.add_assoc.
-  set (uii := W + err). set (yuu := wcet_sound_helper IHexec1).
+  set (uii := W + err).
+  set (yuu := Plus.plus_le_reg_l X1 (compute_wcet G c) W IHexec1).
   set (tyty := Mult.mult_le_compat_r X1 (compute_wcet G c) yt yuu).
   lia.
 Qed.
