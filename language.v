@@ -143,7 +143,7 @@ Inductive exec : @state nat -> @state nat -> nat -> cmd -> @ state nat -> nat ->
 
 (* Now prove determinism of the semantics and see if it any easier than Agda *)
 
-Theorem Δ_exec : forall (c : cmd), forall (Γ st st' st'' : @state nat), forall (W W' W'' : nat),
+Lemma Δ_exec : forall (c : cmd), forall (Γ st st' st'' : @state nat), forall (W W' W'' : nat),
     (exec Γ st W c st' W') -> (exec Γ st W c st'' W'') ->
     st' = st'' /\ W' = W''.
 Proof.
@@ -228,7 +228,7 @@ Proof.
   rewrite <- yt1; reflexivity.
 Qed.
 
-Theorem cancel_exec_time : forall (c : cmd),
+Lemma cancel_exec_time : forall (c : cmd),
   forall (Γ st st' st'' : @state nat), forall (W1 W2 W' W'': nat),
     (exec Γ st W1 c st' (W1 + W')) -> (exec Γ st W2 c st'' (W2 + W'')) ->
       (W' = W'').
@@ -329,3 +329,44 @@ Proof.
 Qed.
 
 (* Now we want to write a function that computes the worst case time *)
+
+Fixpoint compute_wcet (Γ : @state nat) (c : cmd): nat :=
+  match c with
+  | Skip => 0
+  | Assign lx e => aevalT Γ e
+  | Seq c1 c2 => (compute_wcet Γ c1) + (compute_wcet Γ c2)
+  | If b t e => Nat.max (compute_wcet Γ t) (compute_wcet Γ e) + (bevalT Γ b)
+  | While b c => ((compute_wcet Γ c) + (bevalT Γ b)) * (lookup Γ "loop-count")
+                + (bevalT Γ b)
+  end.
+
+Lemma wcet_sound_helper : forall {m n p : nat}, m + n <= m + p -> n <= p.
+Proof.
+  lia.
+Qed.
+
+
+(* Now prove that the computed wcet is really the max *)
+Theorem wcet_sound : forall (Γ st st' : @state nat), forall (c : cmd), forall (W W' : nat),
+  exec Γ st W c st' W' -> W' <= W + (compute_wcet Γ c).
+Proof.
+  intros. induction H. simpl. reflexivity.
+  simpl. reflexivity. simpl; lia. simpl; lia. simpl; lia. simpl; lia. simpl.
+  set (yt := lookup G "loop-count"). set (ty := (bevalT G b)).
+  (* rewrite Plus.plus_assoc_reverse.  *)
+  rewrite Nat.mul_add_distr_r. rewrite Nat.mul_add_distr_r.
+  set (rt := ty * yt). set (er := X1 * yt).
+  set (ui := compute_wcet G c * yt).
+  rewrite Nat.add_assoc.
+  rewrite Plus.plus_assoc_reverse. 
+  set (df := Nat.add_assoc ui rt ty).
+  rewrite <- df.
+  set (err := rt + ty).
+  rewrite  Nat.add_assoc.
+  set (ll := Nat.add_comm er err). set (lli := Nat.add_comm ui err).
+  rewrite  <- Nat.add_assoc. rewrite  <- Nat.add_assoc.
+  rewrite ll, lli. rewrite Nat.add_assoc, Nat.add_assoc.
+  set (uii := W + err). set (yuu := wcet_sound_helper IHexec1).
+  set (tyty := Mult.mult_le_compat_r X1 (compute_wcet G c) yt yuu).
+  lia.
+Qed.
