@@ -140,10 +140,14 @@ Inductive exec : @state nat -> @state nat -> nat -> cmd -> @ state nat -> nat ->
                        (W + (X1 + (bevalT G b)) * (lookup G "loop-count") +
                           (bevalT G b)).
 
+Notation "G '|=' '(' st ',' W ')' '=[' c ']=>' '(' st1 ',' W1 ')' "
+  := (exec G st W c st1 W1) (at level 90, left associativity)
+         : type_scope.
+
 (* Now prove determinism of the semantics and see if it any easier than Agda *)
 
 Lemma Δ_exec : forall (c : cmd), forall (Γ st st' st'' : @state nat), forall (W W' W'' : nat),
-    (exec Γ st W c st' W') -> (exec Γ st W c st'' W'') ->
+    Γ |= (st , W) =[ c ]=> (st', W') -> Γ |= (st, W) =[c]=> (st'', W'') ->
     st' = st'' /\ W' = W''.
 Proof.
   intros c Γ st st' st'' W W' W'' E1 E2.
@@ -292,7 +296,8 @@ Qed.
 
 Lemma seq_sound : forall(Γ st st' st'' st''' : @state nat), forall (W W' X1 X2 : nat),
   forall (c1 c2 : cmd), exec Γ st W (Seq c1 c2) st' W' ->
-                   exec Γ st W c1 st'' (W + X1) -> exec Γ st'' W c2 st''' (W + X2)
+                   exec Γ st W c1 st'' (W + X1) ->
+                   exec Γ st'' W c2 st''' (W + X2)
                    -> W' = (W + X1 + X2).
 Proof.
   intros. inversion H. subst.
@@ -341,7 +346,7 @@ Fixpoint compute_wcet (Γ : @state nat) (c : cmd): nat :=
 
 (* Now prove that the computed wcet is really the max *)
 Theorem wcet_sound : forall (Γ st st' : @state nat), forall (c : cmd), forall (W W' : nat),
-  exec Γ st W c st' W' -> W' <= W + (compute_wcet Γ c).
+    Γ |= (st , W) =[ c ]=> (st' , W') -> W' <= W + (compute_wcet Γ c).
 Proof.
   intros. induction H. simpl. reflexivity.
   simpl. reflexivity. simpl; lia. simpl; lia. simpl; lia. simpl; lia. simpl.
