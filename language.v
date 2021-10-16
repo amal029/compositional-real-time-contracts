@@ -1,6 +1,8 @@
 Require Import Coq.Strings.String.
 Require Import Coq.micromega.Lia.
-Require Import Coq.micromega.Lqa.
+Require Import Coq.Arith.PeanoNat.
+
+
 
 Definition state {A : Set} := string -> A.
 
@@ -273,3 +275,57 @@ Proof.
   set (yt := IHc Γ st st'0 st'1 W1 W2 X1 X0 H9 H13).
   rewrite yt in H3. rewrite yt in H10. lia.
 Qed.  
+
+(* Theorem for WCET of skip *)
+
+Lemma skip_sound : forall(Γ st st' : @state nat), forall (W W' X : nat),
+    exec Γ st W Skip st' W' -> (W = X) -> (W' = X).
+Proof.
+  intros. inversion H. subst. auto.
+Qed.  
+
+Lemma assign_sound: forall(Γ st st' : @state nat), forall (W W' X : nat),
+  forall (x : string), forall (e : aexp),
+    exec Γ st W (Assign (Lvar x) e) st' W' -> W' = (W + (aevalT Γ e)).
+Proof.
+  intros. inversion H. subst. reflexivity.
+Qed.
+
+Lemma seq_sound : forall(Γ st st' st'' st''' : @state nat), forall (W W' X1 X2 : nat),
+  forall (c1 c2 : cmd), exec Γ st W (Seq c1 c2) st' W' ->
+                   exec Γ st W c1 st'' (W + X1) -> exec Γ st'' W c2 st''' (W + X2)
+                   -> W' = (W + X1 + X2).
+Proof.
+  intros. inversion H. subst.
+  set (yt := Δ_exec c1 Γ st st'' st'0 W (W + X1) (W + X0) H0 H7).
+  destruct yt. rewrite <- H2 in H10.
+  set (ytt := cancel_exec_time c2 Γ st'' st''' st' W (W + X0) X2 X3 H1 H10).
+  rewrite ytt. lia.
+Qed.
+
+
+Lemma ife_sound : forall(Γ st st' st'' st''' : @state nat), forall (W W' X1 X2 : nat),
+  forall (b : bexp), forall (t e : cmd),
+    exec Γ st W t st' (W + X1) -> exec Γ st W e st'' (W + X2)
+    -> exec Γ st W (If b t e) st''' W' -> (W' <= W + Nat.max X1 X2).
+Proof.
+  intros. inversion H1. subst.
+  set (yt := Δ_exec t Γ st st' st''' W (W + X1) (W + X0) H H11).
+  destruct yt. lia.
+  subst. set (yt := Δ_exec e Γ st st'' st''' W (W + X2) (W + X3) H0 H12).
+  destruct yt. lia.
+Qed.
+
+Lemma while_sound : forall(Γ st st' st'' st''' : @state nat), forall (W W' X1 X2 : nat),
+  forall (b : bexp), forall (c : cmd), exec Γ st W c st' (W + X1)
+                             -> exec Γ st W (While b c) st' W'
+                             -> W' <=
+                                 (W + (X1 + (bevalT Γ b)) *
+                                        (lookup Γ "loop-count") + (bevalT Γ b)).
+Proof.
+  intros. inversion H0. subst. lia.
+  subst. set (yt := Δ_exec c Γ st st' st'0 W (W + X1) (W + X0) H H7).
+  destruct yt. lia.
+Qed.
+
+(* Now we want to write a function that computes the worst case time *)
