@@ -1,8 +1,7 @@
 Require Import Coq.Strings.String.
 Require Import Coq.micromega.Lia.
 Require Import Coq.Arith.PeanoNat.
-
-
+Require Import Coq.micromega.Lqa.
 
 Definition state {A : Set} := string -> A.
 
@@ -347,16 +346,11 @@ Proof.
   intros. induction H. simpl. reflexivity.
   simpl. reflexivity. simpl; lia. simpl; lia. simpl; lia. simpl; lia. simpl.
   set (yt := lookup G "loop-count"). set (ty := (bevalT G b)).
-  (* rewrite Plus.plus_assoc_reverse.  *)
   rewrite Nat.mul_add_distr_r. rewrite Nat.mul_add_distr_r.
   set (rt := ty * yt). set (er := X1 * yt).
-  set (ui := compute_wcet G c * yt).
-  rewrite Nat.add_assoc.
-  rewrite Plus.plus_assoc_reverse. 
-  set (df := Nat.add_assoc ui rt ty).
-  rewrite <- df.
-  set (err := rt + ty).
-  rewrite  Nat.add_assoc.
+  set (ui := compute_wcet G c * yt). rewrite Nat.add_assoc.
+  rewrite Plus.plus_assoc_reverse.  set (df := Nat.add_assoc ui rt ty).
+  rewrite <- df. set (err := rt + ty). rewrite  Nat.add_assoc.
   set (ll := Nat.add_comm er err). set (lli := Nat.add_comm ui err).
   rewrite  <- Nat.add_assoc. rewrite  <- Nat.add_assoc.
   rewrite ll, lli. rewrite Nat.add_assoc, Nat.add_assoc.
