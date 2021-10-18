@@ -1,8 +1,7 @@
 Require Import Coq.Strings.String.
 Require Import Coq.micromega.Lia.
 Require Import Coq.Arith.PeanoNat.
-Require Import Coq.micromega.Lqa.
-Require Import Coq.Program.Equality.
+Require Import Coq.setoid_ring.Ring.
 
 Definition state {A : Set} := string -> A.
 
@@ -31,7 +30,22 @@ Inductive aexp : Set :=
 | Anum : forall (m : nat), aexp
 | Plus : forall (l r : aexp), aexp
 | Mul  : forall (l r : aexp), aexp
-| Minus: forall (l r: aexp), aexp.
+| Minus: forall (l r: aexp), aexp
+| Bexp : forall (b : bexp), aexp
+
+with bexp : Set :=
+| Lt : forall (l r : aexp), bexp
+| Gt : forall (l r : aexp), bexp
+| Leq : forall (l r : aexp), bexp
+| Geq : forall (l r : aexp), bexp
+| Eq : forall (l r : aexp), bexp
+| And : forall (l r : bexp), bexp
+| Or : forall (l r : bexp), bexp
+| Xor : forall (l r:  bexp), bexp
+| Not : forall (b:  bexp), bexp
+| True : bexp
+| False : bexp.
+
 
 (* The evaluation function for aexp *)
 Fixpoint aeval (st : @state nat) (a : aexp) :=
@@ -41,22 +55,9 @@ Fixpoint aeval (st : @state nat) (a : aexp) :=
   | Plus l r => (aeval st l) + (aeval st r)
   | Mul  l r => (aeval st l) * (aeval st r)
   | Minus l r => (aeval st l) - (aeval st r)
-  end.
-
-Inductive bexp : Set :=
-| Lt : forall (l r : aexp), bexp
-| Gt : forall (l r : aexp), bexp
-| Leq : forall (l r : aexp), bexp
-| Geq : forall (l r : aexp), bexp
-| Eq : forall (l r : aexp), bexp
-| And : forall (l r : bexp), bexp
-| Or : forall (l r : bexp), bexp
-| True : bexp
-| False : bexp.
-
-(* The bexp evaluation *)
-
-Fixpoint beval (st : @state nat) (b : bexp) : bool :=
+  | Bexp b => if (Bool.eqb (beval st b) true) then 1 else 0
+  end
+with beval (st : @state nat) (b : bexp) : bool :=
   match b with
   | True => true
   | False => false
@@ -67,31 +68,59 @@ Fixpoint beval (st : @state nat) (b : bexp) : bool :=
   | Gt l r => Nat.ltb (aeval st r) (aeval st l)
   | And l r => (beval st l) && (beval st r)
   | Or l r => (beval st l) || (beval st r)
+  | Xor l r => xorb (beval st l) (beval st r)
+  | Not b =>  negb (beval st b)
   end.
+
+
+Notation "a /\ b" := (And a b).
+Notation "a ⩵ b" := (Eq a b) (at level 90, left associativity).
+Notation "a ⨥ b" := (Plus a b) (at level 90, left associativity).
+Notation "¬ a" := (Not a) (at level 90, left associativity).
+Notation "a ⊕ b" := (Xor a b) (at level 90, left associativity).
+Notation "a − b" := (Minus a b) (at level 90, left associativity).
+
+(* The bexp evaluation *)
+
 
 (* Execution time semantics of aexp *)
 Fixpoint aevalT (st : @state nat) (a : aexp) : nat :=
   match a with
   | Avar x => 1
   | Anum m => 1
-  | Plus l r => (aevalT st l) + (aevalT st r) + (lookup st "+")
-  | Mul  l r => (aevalT st l) * (aevalT st r) + (lookup st "*")
-  | Minus l r => (aevalT st l) - (aevalT st r) + (lookup st "-")
-  end.
+  | Plus l r => (aevalT st l) + (aevalT st r) + 1 
+  | Mul  l r => (aevalT st l) + (aevalT st r) + 1 
+  | Minus l r => (aevalT st l) + (aevalT st r) + 1 
+  | Bexp b => (bevalT st b)
+  (* | Plus l r => (aevalT st l) + (aevalT st r) + (lookup st "+") *)
+  (* | Mul  l r => (aevalT st l) * (aevalT st r) + (lookup st "*") *)
+  (* | Minus l r => (aevalT st l) - (aevalT st r) + (lookup st "-") *)
+  end
 
 (* Execution time semantics of bexp *)
 
-Fixpoint bevalT (st : @state nat) (b : bexp) : nat :=
+with bevalT (st : @state nat) (b : bexp) : nat :=
   match b with
   | True => 1
   | False => 1
-  | Lt l r => (aevalT st l) + (aevalT st r) + (lookup st "<")
-  | Leq l r => (aevalT st l) + (aevalT st r) + (lookup st "<=")
-  | Eq l r => (aevalT st l) + (aevalT st r) + (lookup st "=")
-  | Geq l r => (aevalT st r) + (aevalT st l) + (lookup st ">=")
-  | Gt l r => (aevalT st r) + (aevalT st l) + (lookup st ">")
-  | And l r => (bevalT st l) + (bevalT st r) + (lookup st "and")
-  | Or l r => (bevalT st l) + (bevalT st r) + (lookup st "or")
+  | Lt l r => (aevalT st l) + (aevalT st r) + 1 
+  | Leq l r => (aevalT st l) + (aevalT st r) + 1 
+  | Eq l r => (aevalT st l) + (aevalT st r) + 1 
+  | Geq l r => (aevalT st r) + (aevalT st l) + 1 
+  | Gt l r => (aevalT st r) + (aevalT st l) + 1 
+  | And l r => (bevalT st l) + (bevalT st r) + 1 
+  | Or l r => (bevalT st l) + (bevalT st r) + 1 
+  | Xor l r => (bevalT st l) + (bevalT st r) + 1 
+  | Not b => (bevalT st b) + (lookup st "not")
+  (* | Lt l r => (aevalT st l) + (aevalT st r) + (lookup st "<") *)
+  (* | Leq l r => (aevalT st l) + (aevalT st r) + (lookup st "<=") *)
+  (* | Eq l r => (aevalT st l) + (aevalT st r) + (lookup st "=") *)
+  (* | Geq l r => (aevalT st r) + (aevalT st l) + (lookup st ">=") *)
+  (* | Gt l r => (aevalT st r) + (aevalT st l) + (lookup st ">") *)
+  (* | And l r => (bevalT st l) + (bevalT st r) + (lookup st "and") *)
+  (* | Or l r => (bevalT st l) + (bevalT st r) + (lookup st "or") *)
+  (* | Xor l r => (bevalT st l) + (bevalT st r) + (lookup st "xor") *)
+  (* | Not b => (bevalT st b) + (lookup st "not") *)
   end.
 
 (* The lvar type *)
@@ -351,8 +380,8 @@ Fixpoint compute_wcet (Γ : @state nat) (c : cmd): nat :=
 Theorem wcet_sound : forall (Γ st st' : @state nat), forall (c : cmd), forall (W W' : nat),
     Γ |= (st , W) =[ c ]=> (st' , W') -> W' <= W + (compute_wcet Γ c).
 Proof.
-  intros. induction H. simpl. reflexivity.
-  simpl. lia. simpl; lia. simpl; lia. simpl; lia. simpl; lia. simpl.
+  intros. induction H.
+  all: (simpl; (try (reflexivity || lia))).
   set (yt := lookup G "loop-count"). set (ty := (bevalT G b)).
   rewrite Nat.mul_add_distr_r. rewrite Nat.mul_add_distr_r.
   set (rt := ty * yt). set (er := X1 * yt).
@@ -364,6 +393,97 @@ Proof.
   rewrite ll, lli. rewrite Nat.add_assoc, Nat.add_assoc.
   set (uii := W + err).
   set (yuu := Plus.plus_le_reg_l X1 (compute_wcet G c) W IHexec1).
-  set (tyty := Mult.mult_le_compat_r X1 (compute_wcet G c) yt yuu).
-  lia.
+  set (tyty := Mult.mult_le_compat_r X1 (compute_wcet G c) yt yuu). lia.
 Qed.
+
+(* Example of eval *)
+Eval compute                    (* compute is the tactic being applied *)
+  in let f := (fun x => x + 3) in
+     let m := f 4 + f 6 in m.
+
+(* Example of proving assoc for xor using already given Ring *)
+
+(* Lemma exxorassoc : forall (a b c: bool), (a ⊕ b ⊕ c) = (a ⊕ (b ⊕ c)). *)
+(* Proof. *)
+(*   intros. *)
+(*   rewrite BoolTheory.(Radd_assoc). *)
+(*   reflexivity. *)
+(* Qed. *)
+
+(* Now write the algorithm to produce an assertion on state with output
+of type bool (not Prop). *)
+
+Fixpoint replaceA (a: aexp) (x: string) (e : aexp) : aexp :=
+   match a with
+   | Avar x' => if eqb x' x then e else (Avar x')
+   | Anum m => Anum m
+   | Plus l r => Plus (replaceA l x e) (replaceA r x e)
+   | Mul l r => Mul (replaceA l x e) (replaceA r x e)
+   | Minus l r => Minus (replaceA l x e) (replaceA r x e)
+   | Bexp b => Bexp (replaceB b x e)
+  end
+
+with replaceB (b: bexp) (x: string) (e : aexp): bexp :=
+  match b with
+  | True => True
+  | False => False
+  | Lt l r => Lt (replaceA l x e) (replaceA r x e)
+  | Leq l r => Leq (replaceA l x e) (replaceA r x e)
+  | Eq l r => Eq (replaceA l x e) (replaceA r x e)
+  | Geq l r => Geq (replaceA l x e) (replaceA r x e)
+  | Gt l r => Gt (replaceA l x e) (replaceA r x e)
+  | And l r => And (replaceB l x e) (replaceB r x e)
+  | Or l r => Or (replaceB l x e) (replaceB r x e)
+  | Xor l r => Xor (replaceB l x e) (replaceB r x e)
+  | Not b => Not (replaceB b x e)
+  end.
+
+Fixpoint mkassert (c : cmd) (b: bexp) (Γ : @state nat): bexp :=
+  match c with
+  | Skip => b
+  | Assign (Lvar x) e as y =>
+      let v := compute_wcet Γ y in
+      let wexp := Minus (Avar "W") (Anum v) in
+      let llb := (replaceB b x e) in
+      (replaceB llb "W" wexp)
+          (* (Eq (Avar "W") *)
+          (*     (Plus (Avar "W") *)
+          (*           (Anum (compute_wcet Γ y)))) *)
+  | Seq c1 c2 => mkassert c1 (mkassert c2 b Γ) Γ
+  | If b' t e =>
+      let v := bevalT Γ b' in
+      let wexp := Minus (Avar "W") (Anum v) in
+      let lb1 := (mkassert t b Γ) in
+      let lb2 := (mkassert e b Γ) in
+      Xor (And b' (replaceB lb1 "W" wexp))
+          (And (Not b') (replaceB lb2 "W" wexp))
+          (* (Eq (Avar "W") (Plus (Avar "W") (Anum (bevalT Γ b')))) *)
+  | While b c => True               (* FIXME *)
+  end.
+
+(* Example program that I will analyse first *)
+Definition prog1 : cmd :=
+  Seq
+    (Seq
+       (If (Eq (Avar "init") (Anum 1))
+           (Assign (Lvar "m") (Plus (Avar "m") (Anum 1)))
+           (Assign (Lvar "u") (Minus (Avar "u") (Anum 1))))
+       (If (Eq (Avar "Y") (Anum 1))
+           (Assign (Lvar "cond") (Bexp (¬ ((Avar "init") ⩵ (Anum 1)))))
+           (Assign (Lvar "cond") (Anum 1))))
+    (If (Eq (Avar "cond") (Anum 1))
+        (Assign (Lvar "m") (Plus (Avar "m") (Anum 1)))
+        (Assign (Lvar "u1") (Minus (Avar "u1") (Anum 1)))).
+
+Definition prog2 := Seq
+                      (Seq (Assign (Lvar "X") (Plus (Avar "Y") (Anum 6)))
+                           (Assign (Lvar "X") (Mul (Avar "Y") (Anum 6))))
+                      (Assign (Lvar "X") (Avar "Y")).
+
+
+Eval compute in
+  mkassert prog2 (Geq (Avar "W") (Anum 0)) (Store (K 10) "store" 1).
+
+(* We prove the soundness of the new algorithm *)
+(* The soundness statement says that the computed tight WCET is greater
+than complete execution time of the program*)
