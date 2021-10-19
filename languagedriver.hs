@@ -27,6 +27,7 @@ prog2 =
 agetVars :: Aexp -> Set Prelude.String -> Set Prelude.String
 agetVars (Avar x) s = Set.insert x s
 agetVars (Anum _) s = s
+agetVars (Wnum _) s = s
 agetVars (Plus l r) s = Set.union (agetVars l s) (agetVars r s)
 agetVars (Minus l r) s = Set.union (agetVars l s) (agetVars r s)
 agetVars (Mul l r) s = Set.union (agetVars l s) (agetVars r s)
@@ -49,6 +50,7 @@ bgetVars False s = s
 amkSMT :: Aexp -> Prelude.String -> Prelude.String
 amkSMT (Avar x) s = s Prelude.++ " " Prelude.++ x
 amkSMT (Anum n) s = s Prelude.++ " " Prelude.++ Prelude.show n
+amkSMT (Wnum n) s = s Prelude.++ " " Prelude.++ Prelude.show n
 amkSMT (Plus l r) s = "(+ " Prelude.++ amkSMT l s
                       Prelude.++ " " Prelude.++ amkSMT r s Prelude.++ ")"
 amkSMT (Minus l r) s = "(- " Prelude.++ amkSMT l s
@@ -80,7 +82,7 @@ bmkSMT False s = "(= 0 1)" Prelude.++ s
 
 mkSMT :: Cmd -> Prelude.String 
 mkSMT prog = smt where
-  yu = mkassert prog (Eq (Avar "W") (Anum 0))
+  yu = mkassert prog (Eq (Avar "W") (Wnum 0))
        (store (store (store (\_ -> 0) "store" 1) "not" 1) "loop-count" 0)
   vars = Set.foldr' (\x y -> "(declare-const " Prelude.++ x Prelude.++ " Int) "
                              Prelude.++ y) "" (bgetVars yu Set.empty)
@@ -91,6 +93,5 @@ mkSMT prog = smt where
 main :: Prelude.IO ()
 main = do
   Prelude.print (computeWcet
-                 (store (store (store (\_ -> 0) "store" 1) "not" 1)
-                  "loop-count" 0) prog2)
-  Prelude.writeFile  "prog2.smt2" (mkSMT prog2)
+                 (store (store (\_ -> 0) "store" 1) "not" 1) prog1)
+  Prelude.writeFile  "prog1.smt2" (mkSMT prog1)
