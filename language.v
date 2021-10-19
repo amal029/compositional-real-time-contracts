@@ -366,34 +366,34 @@ Qed.
 
 (* Now we want to write a function that computes the worst case time *)
 
-Fixpoint compute_wcet (Γ : @state nat) (c : cmd): nat :=
+Fixpoint computeWcet (Γ : @state nat) (c : cmd): nat :=
   match c with
   | Skip => 0
   | Assign lx e => aevalT Γ e + (lookup Γ "store")
-  | Seq c1 c2 => (compute_wcet Γ c1) + (compute_wcet Γ c2)
-  | If b t e => Nat.max (compute_wcet Γ t) (compute_wcet Γ e) + (bevalT Γ b)
-  | While b c => ((compute_wcet Γ c) + (bevalT Γ b)) * (lookup Γ "loop-count")
+  | Seq c1 c2 => (computeWcet Γ c1) + (computeWcet Γ c2)
+  | If b t e => Nat.max (computeWcet Γ t) (computeWcet Γ e) + (bevalT Γ b)
+  | While b c => ((computeWcet Γ c) + (bevalT Γ b)) * (lookup Γ "loop-count")
                 + (bevalT Γ b)
   end.
 
 (* Now prove that the computed wcet is really the max *)
 Theorem wcet_sound : forall (Γ st st' : @state nat), forall (c : cmd), forall (W W' : nat),
-    Γ |= (st , W) =[ c ]=> (st' , W') -> W' <= W + (compute_wcet Γ c).
+    Γ |= (st , W) =[ c ]=> (st' , W') -> W' <= W + (computeWcet Γ c).
 Proof.
   intros. induction H.
   all: (simpl; (try (reflexivity || lia))).
   set (yt := lookup G "loop-count"). set (ty := (bevalT G b)).
   rewrite Nat.mul_add_distr_r. rewrite Nat.mul_add_distr_r.
   set (rt := ty * yt). set (er := X1 * yt).
-  set (ui := compute_wcet G c * yt). rewrite Nat.add_assoc.
+  set (ui := computeWcet G c * yt). rewrite Nat.add_assoc.
   rewrite Plus.plus_assoc_reverse.  set (df := Nat.add_assoc ui rt ty).
   rewrite <- df. set (err := rt + ty). rewrite  Nat.add_assoc.
   set (ll := Nat.add_comm er err). set (lli := Nat.add_comm ui err).
   rewrite  <- Nat.add_assoc. rewrite  <- Nat.add_assoc.
   rewrite ll, lli. rewrite Nat.add_assoc, Nat.add_assoc.
   set (uii := W + err).
-  set (yuu := Plus.plus_le_reg_l X1 (compute_wcet G c) W IHexec1).
-  set (tyty := Mult.mult_le_compat_r X1 (compute_wcet G c) yt yuu). lia.
+  set (yuu := Plus.plus_le_reg_l X1 (computeWcet G c) W IHexec1).
+  set (tyty := Mult.mult_le_compat_r X1 (computeWcet G c) yt yuu). lia.
 Qed.
 
 (* Example of eval *)
@@ -442,7 +442,7 @@ Fixpoint mkassert (c : cmd) (b: bexp) (Γ : @state nat): bexp :=
   match c with
   | Skip => b
   | Assign (Lvar x) e as y =>
-      let v := compute_wcet Γ y in
+      let v := computeWcet Γ y in
       let wexp := Minus (Avar "W") (Anum v) in
       let llb := (replaceB b x e) in
       (replaceB llb "W" wexp)
@@ -470,8 +470,8 @@ Definition prog1 : cmd :=
            (Assign (Lvar "u") (Minus (Avar "u") (Anum 1))))
        (If (Eq (Avar "Y") (Anum 1))
            (Assign (Lvar "cond") (Bexp (¬ ((Avar "init") ⩵ (Anum 1)))))
-           (Assign (Lvar "cond") (Anum 1))))
-    (If (Eq (Avar "cond") (Anum 1))
+           (Assign (Lvar "cond") (Bexp True))))
+    (If (Eq (Avar "cond") (Bexp True))
         (Assign (Lvar "m") (Plus (Avar "m") (Anum 1)))
         (Assign (Lvar "u1") (Minus (Avar "u1") (Anum 1)))).
 
@@ -482,11 +482,11 @@ Definition prog2 := Seq
 
 
 Eval compute in
-  mkassert prog1 (Geq (Avar "W") (Anum 0)) (Store (K 10) "store" 1).
+  mkassert prog1 (Eq (Avar "W") (Anum 0)) (Store (K 10) "store" 1).
 
-Extraction Language Haskell.
 Require Import ExtrHaskellBasic.
 Require Import ExtrHaskellNatNum.
+Extraction Language Haskell.
 
 Extract Inductive Datatypes.nat => "Prelude.Integer" ["0" "(Prelude.+ 1)"]
 "(\fO fS n -> if n Prelude.== 0 then fO () else fS (n Prelude.- 1))".
@@ -513,7 +513,7 @@ Extract Inlined Constant Byte.byte_eq_dec => "((Prelude.==) :: Prelude.Char -> P
 Extract Inlined Constant Ascii.ascii_of_byte => "(\x -> x)".
 Extract Inlined Constant Ascii.byte_of_ascii => "(\x -> x)".
 
-Extraction "./language.hs" mkassert.
+Extraction "./language.hs" mkassert Store.
 
 (* We prove the soundness of the new algorithm *)
 (* The soundness statement says that the computed tight WCET is greater
