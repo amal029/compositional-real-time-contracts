@@ -1,6 +1,22 @@
 #!/usr/bin/env python3
 
-from z3 import Solver, parse_smt2_file, Int
+from z3 import Solver, parse_smt2_file, Int, sat
+
+
+def binary_search(lb, ub, s, makespan, epsilon=1e-6):
+    if (ub - lb <= epsilon):
+        s.check()
+        return s.model()
+    else:
+        half = lb + ((ub - lb)/2.0)
+        s.push()
+        s.add(makespan >= half, makespan <= ub)
+        ret = s.check()
+        s.pop()
+        if ret == sat:
+            return binary_search(half, ub, s, makespan, epsilon)
+        else:
+            return binary_search(lb, half, s, makespan, epsilon)
 
 
 def main(fname):
@@ -8,10 +24,10 @@ def main(fname):
     W = Int('W')
     s = Solver()
     s.add(eqn)
-    print(s)
+    # print(s)
     s.check()
-    print('Found WCET for program: %s : %s ' % (fname, s.model()[W]))
+    print('Model: ', binary_search(0, 100049, s, W))
 
 
 if __name__ == '__main__':
-    main('prog1.smt2')
+    main('prog3.smt2')
