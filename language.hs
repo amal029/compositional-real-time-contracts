@@ -17,12 +17,13 @@ lookup st =
 
 data Aexp =
    Avar Prelude.String
- | Anum Prelude.Integer
+ | Anum Prelude.Float
  | Wnum Prelude.Integer
  | Plus Aexp Aexp
  | Mul Aexp Aexp
  | Minus Aexp Aexp
  | Bexp0 Bexp
+
 data Bexp =
    Lt Aexp Aexp
  | Gt Aexp Aexp

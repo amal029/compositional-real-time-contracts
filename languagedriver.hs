@@ -38,7 +38,6 @@ l != r = Assign l r
 (*) :: Aexp -> Aexp -> Aexp
 l * r = Mul l r
 
-
 (+) :: Aexp -> Aexp -> Aexp
 l + r = Plus l r
 
@@ -76,62 +75,62 @@ prog3 = If (Avar "init" == Anum 1)
         ("x" != Avar "x" * Anum 1 !
           "x" != Avar "x" * Anum 1!
           "x" != Avar "x" * Anum 1)
-        ("y" != Anum 10) --E branch
-        `Seq` Assign "i" (Anum 0) `Seq`
-        While (Avar "i" `Lt` Avar "n")
+        ("y" != Anum 10) ! --E branch
+        "i" != Anum 0 !
+        While (Avar "i" < Avar "n")
         (If (Avar "Y" == Anum 1)
-          (Assign "cond" (Bexp0 (Not (Eq (Avar "init") (Anum 1))))) --T branch
-          (Assign "cond" (Bexp0 True) `Seq`                         --E branch
-            Assign "x" (Mul (Avar "x") (Anum 1)) `Seq`
-            Assign "x" (Mul (Avar "x") (Anum 1)) `Seq`
-            Assign "x" (Mul (Avar "x") (Anum 1)))
-         `Seq`
+          ("cond" != Bexp0 (Not (Avar "init" == Anum 1))) --T branch
+          ("cond" != Bexp0 True !                         --E branch
+            "x" != Avar "x" * Anum 1 !
+            "x" != Avar "x" * Anum 1 !
+            "x" != Avar "x" * Anum 1) !
          If (Avar "cond" == Bexp0 True)
-          (Assign "t" (Mul (Anum 9) (Anum 100))) --T branch
-          (Assign "meme" (Plus (Anum 90) (Avar "r")) `Seq` --E branch
-           Assign "x" (Mul (Avar "x") (Anum 1)) `Seq`
-            Assign "x" (Mul (Avar "x") (Anum 1)) `Seq`
-            Assign "x" (Mul (Avar "x") (Anum 1)))
-          `Seq`
-          Assign "i" (Avar "i" + Anum 1)) 3 []
+          ("t" != Anum 9 * Anum 100) --T branch
+          ("meme" != Anum 90 + Avar "r" ! --E branch
+            "x" != Avar "x" * Anum 1 !
+            "x" != Avar "x" * Anum 1 !
+            "x" != Avar "x" * Anum 1) !
+          "i" != Avar "i" + Anum 1) 3 []
 
 --XXX: Program 2: Pascal Raymond' paper
 prog4 :: Cmd
-prog4 = If (Eq (Avar "init") (Anum 1))
-        (Assign "x" (Mul (Avar "x") (Anum 1)) `Seq`
-          Assign "x" (Mul (Avar "x") (Anum 1)) `Seq`
-          Assign "x" (Mul (Avar "x") (Anum 1)))
-        (Assign "y" (Anum 10)) --E branch
-        `Seq` Assign "i" (Anum 0) `Seq`
-        While (Avar "i" `Lt` Avar "n")
-        (If (Eq (Avar "cond") (Bexp0 True))
-          (Assign "t" (Mul (Anum 9) (Anum 100))) --T branch
-          (Assign "meme" (Plus (Anum 90) (Avar "r")) `Seq` --E branch
-           Assign "x" (Mul (Avar "x") (Anum 1)) `Seq`
-            Assign "x" (Mul (Avar "x") (Anum 1)) `Seq`
-            Assign "x" (Mul (Avar "x") (Anum 1)))
-          `Seq`
-         If (Eq (Avar "Y") (Anum 1))
-          (Assign "cond" (Bexp0 (Not (Eq (Avar "init") (Anum 1))))) --T branch
-          (Assign "cond" (Bexp0 True) `Seq`                         --E branch
-            Assign "x" (Mul (Avar "x") (Anum 1)) `Seq`
-            Assign "x" (Mul (Avar "x") (Anum 1)) `Seq`
-            Assign "x" (Mul (Avar "x") (Anum 1)))
-         `Seq`
-          Assign "i" (Plus (Avar "i") (Anum 1))) 3 []
+prog4 = If (Avar "init" == Anum 1)
+        ("x" != Avar "x" * Anum 1 !
+          "x" != Avar "x" * Anum 1 !
+          "x" != Avar "x" * Anum 1)
+        ("y" != Anum 10) ! --E branch
+        "i" != Anum 0 !
+        While (Avar "i" < Avar "n")
+        (If (Avar "cond" == Bexp0 True)
+          ("t" != Anum 9 * Anum 100) --T branch
+          ("meme" != Anum 90 + Avar "r" ! --E branch
+           "x" != Avar "x" * Anum 1 !
+            "x" != Avar "x" * Anum 1 !
+            "x" != Avar "x" * Anum 1) !
+         If (Avar "Y" == Anum 1)
+          ("cond" != Bexp0 (Not (Avar "init" == Anum 1))) --T branch
+          ("cond" != Bexp0 True !
+            "x" != Avar "x" * Anum 1 !
+            "x" != Avar "x" * Anum 1 !
+            "x" != Avar "x" * Anum 1) !
+          "i" != Avar "i" + Anum 1) 3 []
         
 --XXX: Program 5 Pascal Raymond' paper
 prog5 :: Cmd
 prog5 = "i" != Anum 0!
         -- Assign cond some random number
         "cond" != Anum 1!
-        While (Avar "i" < Anum n)
+        While (Avar "i" < Anum 3)
         (If (Avar "cond" == Anum 1)
-         ("x" != Avar "x" * Anum 100!
+         ("x" != Avar "x" * Anum 1010!
           "cond" != Anum 0)
-         ("cond" != Anum 1))
-        n [] where n = 3
+         ("cond" != Anum 1)) 3 []
 
+
+--XXX: Example 1 bubble sort
+--XXX: Example 2 binary search
+--XXX: Example 3 Faculty function
+--XXX: Example 4 Sqrt function
 
 -- First get all the variables in mkassert
 agetVars :: Aexp -> Set Prelude.String -> Set Prelude.String
