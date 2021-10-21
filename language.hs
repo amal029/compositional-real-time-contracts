@@ -21,6 +21,7 @@ data Aexp =
  | Wnum Prelude.Integer
  | Plus Aexp Aexp
  | Mul Aexp Aexp
+ | Div Aexp Aexp
  | Minus Aexp Aexp
  | Bexp0 Bexp
 
@@ -43,6 +44,8 @@ aevalT st a =
    Plus l r ->
     (Prelude.+) ((Prelude.+) (aevalT st l) (aevalT st r)) ((Prelude.+ 1) 0);
    Mul l r ->
+    (Prelude.+) ((Prelude.+) (aevalT st l) (aevalT st r)) ((Prelude.+ 1) 0);
+   Div l r ->
     (Prelude.+) ((Prelude.+) (aevalT st l) (aevalT st r)) ((Prelude.+ 1) 0);
    Minus l r ->
     (Prelude.+) ((Prelude.+) (aevalT st l) (aevalT st r)) ((Prelude.+ 1) 0);
@@ -110,6 +113,7 @@ replaceA a x e =
    Wnum m -> Wnum m;
    Plus l r -> Plus (replaceA l x e) (replaceA r x e);
    Mul l r -> Mul (replaceA l x e) (replaceA r x e);
+   Div l r -> Div (replaceA l x e) (replaceA r x e);
    Minus l r -> Minus (replaceA l x e) (replaceA r x e);
    Bexp0 b -> Bexp0 (replaceB b x e)}
 
@@ -135,6 +139,7 @@ replaceAWnum a e =
    Wnum m -> Wnum (m Prelude.* e);
    Plus l r -> Plus (replaceAWnum l e) (replaceAWnum r e);
    Mul l r -> Mul (replaceAWnum l e) (replaceAWnum r e);
+   Div l r -> Div (replaceAWnum l e) (replaceAWnum r e);
    Minus l r -> Minus (replaceAWnum l e) (replaceAWnum r e);
    Bexp0 b -> Bexp0 (replaceBWnum b e)}
 

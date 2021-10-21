@@ -38,6 +38,9 @@ l != r = Assign l r
 (*) :: Aexp -> Aexp -> Aexp
 l * r = Mul l r
 
+(/) :: Aexp -> Aexp -> Aexp
+l / r = Div l r
+
 (+) :: Aexp -> Aexp -> Aexp
 l + r = Plus l r
 
@@ -48,6 +51,7 @@ l - r = Minus l r
 infix 5 !=
 infixl 4 !
 infixl 7 *
+infixl 7 /
 infixl 6 +
 infixl 6 -
 
@@ -127,10 +131,90 @@ prog5 = "i" != Anum 0!
          ("cond" != Anum 1)) 3 []
 
 
---XXX: Example 1 bubble sort
---XXX: Example 2 binary search
---XXX: Example 3 Faculty function
---XXX: Example 4 Sqrt function
+--Example janne Complex
+janneComplex :: Cmd
+janneComplex =
+  While (Avar "a" < Anum 30)
+  (
+    While(Avar "a" < Avar "b")
+    (
+      If (Avar "b" > Anum 5)
+      ("b" != Avar "b" * Anum 3)
+      ("b" != Avar "b" + Anum 2)!
+      If ((Avar "b" >= Anum 10) && (Avar "b" <= Anum 12))
+      ("a" != Avar "a" + Anum 10)
+      ("a" != Avar "a" + Anum 1)
+    ) 9 [] !
+  "a" != Avar "a" + Anum 2!
+  "b" != Avar "b" - Anum 10
+  ) 11 []
+
+sqrtFunction :: Cmd
+sqrtFunction =
+  "x" != Avar "val" * Anum 0.1!
+  "dx" != Anum 0 !
+  "diff" != Anum 0 !
+  "min_tol" != Anum 0.00001!
+  "i" != Anum 0!
+  "flag" != Anum 0 !
+  If (Avar "val" == Anum 0)
+  ("x" != Anum 0)
+  (
+    "i" != Anum 1 !
+    While(Avar "i" < Anum 20)
+    (
+      If(Avar "flag" == Anum 0)
+      (
+        "dx" != (Avar "val" - (Avar "x" * Avar "x")) / (Anum 2 * Avar "x") !
+        "x" != Avar "x" + Avar "dx" !
+        "diff" != Avar "val" - (Avar "x" * Avar "x") !
+        If(Avar "diff" <= Avar "min_tol")
+        ("flag" != Anum 1) Skip
+      )
+      Skip !
+      "i" != Avar "i" + Anum 1
+    ) 20 []
+  )
+
+binarySearch :: Cmd
+binarySearch =
+  "fvalue" != Anum (-1)!
+  "mid" != Anum 0 !
+  "up" != Anum 14!
+  "low" != Anum 0 !
+  While(Avar "low" < Avar "up")
+  (
+    "mid" != (Avar "low" + Avar "up") / Anum 2 !
+    If (Avar "mid" == Avar "x")
+    (
+      "up" != Avar "low" - Anum 1!
+      "fvalue" != Avar "mid"
+    )
+    (
+      If(Avar "mid" > Avar "x")
+      ("up" != Avar "mid" - Anum 1)
+      ("low" != Avar "mid" + Anum 1)
+    )
+  ) 14 [] --XXX: Check the loop count here
+
+facultyFunction :: Cmd
+facultyFunction =
+  "s" != Anum 0!
+  "acc" != Anum 1!
+  "i" != Anum 0!
+  "n" != Anum 5!
+  While(Avar "i" <= Avar "n")
+  (
+    "j" != Avar "i"!
+    "acc" != Anum 1!
+    While(Avar "j" < Avar "n")
+    (
+      "acc" != Avar "acc" * Avar "j"!
+      "j" != Avar "j" + Anum 1
+    ) 5 [] !
+    "s" != Avar "acc" + Avar "s"!
+    "i" != Avar "i" + Anum 1
+  ) 5 []
 
 -- First get all the variables in mkassert
 agetVars :: Aexp -> Set Prelude.String -> Set Prelude.String
@@ -140,6 +224,7 @@ agetVars (Wnum _) s = s
 agetVars (Plus l r) s = Set.union (agetVars l s) (agetVars r s)
 agetVars (Minus l r) s = Set.union (agetVars l s) (agetVars r s)
 agetVars (Mul l r) s = Set.union (agetVars l s) (agetVars r s)
+agetVars (Div l r) s = Set.union (agetVars l s) (agetVars r s)
 agetVars (Bexp0 b) s = bgetVars b s
 
 bgetVars :: Bexp -> Set Prelude.String -> Set Prelude.String
@@ -165,6 +250,8 @@ amkSMT (Plus l r) s = "(+ " Prelude.++ amkSMT l s
 amkSMT (Minus l r) s = "(- " Prelude.++ amkSMT l s
                       Prelude.++ " " Prelude.++ amkSMT r s Prelude.++ ")"
 amkSMT (Mul l r) s = "(* " Prelude.++ amkSMT l s
+                      Prelude.++ " " Prelude.++ amkSMT r s Prelude.++ ")"
+amkSMT (Div l r) s = "(/ " Prelude.++ amkSMT l s
                       Prelude.++ " " Prelude.++ amkSMT r s Prelude.++ ")"
 amkSMT (Bexp0 b) s = bmkSMT b s
 
@@ -193,7 +280,7 @@ mkSMT :: Cmd -> Prelude.String
 mkSMT prog = smt where
   yu = mkassert prog (Eq (Avar "W") (Wnum 0))
        (store (store (store (\_ -> 0) "store" 1) "not" 1) "loop-count" 0)
-  vars = Set.foldr' (\x y -> "(declare-const " Prelude.++ x Prelude.++ " Int) "
+  vars = Set.foldr' (\x y -> "(declare-const " Prelude.++ x Prelude.++ " Real) "
                              Prelude.++ y) "" (bgetVars yu Set.empty)
   smt' = "\n (assert " Prelude.++ bmkSMT yu "" Prelude.++ ")"
   smt = vars Prelude.++ smt'
