@@ -4,6 +4,7 @@ import Language (Cmd(..), Aexp(..), Bexp(..), mkassert, store, computeWcet)
 import qualified Prelude
 import Data.Set as Set
 
+
 -- Make operators for the command language
 (!) :: Cmd -> Cmd -> Cmd
 l ! r = Seq l r 
@@ -94,7 +95,7 @@ prog3 = If (Avar "init" == Anum 1)
             "x" != Avar "x" * Anum 1 !
             "x" != Avar "x" * Anum 1 !
             "x" != Avar "x" * Anum 1) !
-          "i" != Avar "i" + Anum 1) 3 []
+          "i" != Avar "i" + Anum 1) 4 [] Prelude.True
 
 --XXX: Program 2: Pascal Raymond' paper
 prog4 :: Cmd
@@ -117,7 +118,7 @@ prog4 = If (Avar "init" == Anum 1)
             "x" != Avar "x" * Anum 1 !
             "x" != Avar "x" * Anum 1 !
             "x" != Avar "x" * Anum 1) !
-          "i" != Avar "i" + Anum 1) 3 []
+          "i" != Avar "i" + Anum 1) 4 [] Prelude.True
         
 --XXX: Program 5 Pascal Raymond' paper
 prog5 :: Cmd
@@ -128,7 +129,7 @@ prog5 = "i" != Anum 0!
         (If (Avar "cond" == Anum 1)
          ("x" != Avar "x" * Anum 1010!
           "cond" != Anum 0)
-         ("cond" != Anum 1)) 3 []
+         ("cond" != Anum 1)) 10 [] Prelude.True
 
 
 --Example janne Complex
@@ -144,10 +145,10 @@ janneComplex =
       If ((Avar "b" >= Anum 10) && (Avar "b" <= Anum 12))
       ("a" != Avar "a" + Anum 10)
       ("a" != Avar "a" + Anum 1)
-    ) 9 [] !
+    ) 9 [] Prelude.False !
   "a" != Avar "a" + Anum 2!
   "b" != Avar "b" - Anum 10
-  ) 11 []
+  ) 11 [] Prelude.False
 
 sqrtFunction :: Cmd
 sqrtFunction =
@@ -173,7 +174,7 @@ sqrtFunction =
       )
       Skip !
       "i" != Avar "i" + Anum 1
-    ) 20 []
+    ) 20 [] Prelude.True
   )
 
 binarySearch :: Cmd
@@ -195,7 +196,7 @@ binarySearch =
       ("up" != Avar "mid" - Anum 1)
       ("low" != Avar "mid" + Anum 1)
     )
-  ) 14 [] --XXX: Check the loop count here
+  ) 14 [] Prelude.True --XXX: Check the loop count here
 
 facultyFunction :: Cmd
 facultyFunction =
@@ -211,10 +212,10 @@ facultyFunction =
     (
       "acc" != Avar "acc" * Avar "j"!
       "j" != Avar "j" + Anum 1
-    ) 5 [] !
+    ) 5 [] Prelude.False !
     "s" != Avar "acc" + Avar "s"!
     "i" != Avar "i" + Anum 1
-  ) 5 []
+  ) 5 [] Prelude.False
 
 -- First get all the variables in mkassert
 agetVars :: Aexp -> Set Prelude.String -> Set Prelude.String
@@ -276,10 +277,10 @@ bmkSMT (Not b) s = "(not " Prelude.++ bmkSMT b s Prelude.++ ") "
 bmkSMT True s = "true" Prelude.++ s
 bmkSMT False s = "false" Prelude.++ s
 
-mkSMT :: Cmd -> Prelude.String 
-mkSMT prog = smt where
-  yu = mkassert prog (Eq (Avar "W") (Wnum 0))
-       (store (store (store (\_ -> 0) "store" 1) "not" 1) "loop-count" 0)
+mkSMT :: Cmd -> (Prelude.String, Prelude.Integer) 
+mkSMT prog = (smt, mm) where
+  (yu, mm) = mkassert prog (Eq (Avar "W") (Wnum 0))
+             (store (store (\_ -> 0) "store" 1) "not" 1) 1
   vars = Set.foldr' (\x y -> "(declare-const " Prelude.++ x Prelude.++ " Real) "
                              Prelude.++ y) "" (bgetVars yu Set.empty)
   smt' = "\n (assert " Prelude.++ bmkSMT yu "" Prelude.++ ")"
@@ -289,5 +290,6 @@ mkSMT prog = smt where
 main :: Prelude.IO ()
 main = do
   Prelude.print (computeWcet
-                 (store (store (\_ -> 0) "store" 1) "not" 1) prog3)
-  Prelude.writeFile  "prog3.smt2" (mkSMT prog3)
+                 (store (store (\_ -> 0) "store" 1) "not" 1) binarySearch)
+  let (smt, _) = mkSMT binarySearch in
+    Prelude.writeFile  "binarySearch.smt2" smt

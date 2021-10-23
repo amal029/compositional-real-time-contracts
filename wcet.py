@@ -26,8 +26,8 @@ def main(fname):
     s.add(eqn)
     # print(s)
     s.check()
-    print('Model: ', binary_search(0, 100049, s, W))
+    print('Model: ', binary_search(0, 10000000, s, W))
 
 
 if __name__ == '__main__':
-    main('prog3.smt2')
+    main('binarySearch.smt2')

@@ -1,6 +1,9 @@
 module Language where
 
 import qualified Prelude
+import Debug.Trace (traceShowId)
+import GHC.Prelude (RealFrac(ceiling))
+
 
 type State a = Prelude.String -> a
 
@@ -24,6 +27,7 @@ data Aexp =
  | Div Aexp Aexp
  | Minus Aexp Aexp
  | Bexp0 Bexp
+ deriving (Prelude.Show)
 
 data Bexp =
    Lt Aexp Aexp
@@ -37,6 +41,7 @@ data Bexp =
  | Not Bexp
  | True
  | False
+ deriving (Prelude.Show)
 
 aevalT :: State Prelude.Integer -> Aexp -> Prelude.Integer
 aevalT st a =
@@ -82,7 +87,7 @@ data Cmd =
  | Assign Lvar Aexp
  | Seq Cmd Cmd
  | If Bexp Cmd Cmd
- | While Bexp Cmd Prelude.Integer [Aexp]
+ | While Bexp Cmd Prelude.Integer [Aexp] Prelude.Bool
 
 computeWcet :: State Prelude.Integer -> Cmd -> Prelude.Integer
 computeWcet _UU0393_ c =
@@ -95,7 +100,7 @@ computeWcet _UU0393_ c =
     (Prelude.+)
       (Prelude.max (computeWcet _UU0393_ t) (computeWcet _UU0393_ e))
       (bevalT _UU0393_ b);
-   While b c0 n _ ->
+   While b c0 n _ _ ->
     (Prelude.+)
       ((Prelude.*)
         ((Prelude.+) (computeWcet _UU0393_ c0) (bevalT _UU0393_ b))
@@ -131,55 +136,33 @@ replaceB b x e =
    Not b0 -> Not (replaceB b0 x e);
    x0 -> x0}
 
-replaceAWnum :: Aexp -> Prelude.Integer -> Aexp
-replaceAWnum a e =
-  case a of {
-   Avar x' -> Avar x';
-   Anum m -> Anum m;
-   Wnum m -> Wnum (m Prelude.* e);
-   Plus l r -> Plus (replaceAWnum l e) (replaceAWnum r e);
-   Mul l r -> Mul (replaceAWnum l e) (replaceAWnum r e);
-   Div l r -> Div (replaceAWnum l e) (replaceAWnum r e);
-   Minus l r -> Minus (replaceAWnum l e) (replaceAWnum r e);
-   Bexp0 b -> Bexp0 (replaceBWnum b e)}
+mkassert :: Cmd -> Bexp -> State Prelude.Integer -> Prelude.Integer ->
+            (Bexp, Prelude.Integer)
+mkassert Skip b _ mult = (b, mult) 
+mkassert (Assign x0 e) b state mult = (llb, mult)
+  where
+    v = computeWcet state (Assign x0 e)
+    b' = replaceB b x0 e
+    llb = replaceB b' "W" (Minus (Avar "W") (Wnum (v Prelude.* mult)));
+mkassert (Seq c1 c2) b state mult = (b'', mult)
+  where
+    (b', _) = mkassert c2 b state mult
+    (b'', _) = mkassert c1 b' state mult
+mkassert (If b' t e) b state mult = (b'', mult)
+  where
+    v = bevalT state b'
+    wexp = Minus (Avar "W") (Wnum (v Prelude.* mult))
+    (lb1, _) = mkassert t b state mult
+    (lb2, _) = mkassert e b state mult
+    b'' = Xor (And b' (replaceB lb1 "W" wexp))
+          (And (Not b') (replaceB lb2 "W" wexp))
 
-replaceBWnum :: Bexp -> Prelude.Integer -> Bexp
-replaceBWnum b e =
-  case b of {
-   Lt l r -> Lt (replaceAWnum l e) (replaceAWnum r e);
-   Gt l r -> Gt (replaceAWnum l e) (replaceAWnum r e);
-   Leq l r -> Leq (replaceAWnum l e) (replaceAWnum r e);
-   Geq l r -> Geq (replaceAWnum l e) (replaceAWnum r e);
-   Eq l r -> Eq (replaceAWnum l e) (replaceAWnum r e);
-   And l r -> And (replaceBWnum l e) (replaceBWnum r e);
-   Or l r -> Or (replaceBWnum l e) (replaceBWnum r e);
-   Xor l r -> Xor (replaceBWnum l e) (replaceBWnum r e);
-   Not b0 -> Not (replaceBWnum b0 e);
-   x0 -> x0}
-
-mkassert :: Cmd -> Bexp -> State Prelude.Integer -> Bexp
-mkassert c b _UU0393_ =
-  case c of {
-   Skip -> b;
-   Assign x0 e ->
-    let {v = computeWcet _UU0393_ c} in
-    let {wexp = Minus (Avar "W") (Wnum v)} in
-    let {llb = replaceB b x0 e} in replaceB llb "W" wexp;
-   Seq c1 c2 -> mkassert c1 (mkassert c2 b _UU0393_) _UU0393_;
-   If b' t e ->
-    let {v = bevalT _UU0393_ b'} in
-    let {wexp = Minus (Avar "W") (Wnum v)} in
-    let {lb1 = mkassert t b _UU0393_} in
-    let {lb2 = mkassert e b _UU0393_} in
-    Xor (And b' (replaceB lb1 "W" wexp)) (And (Not b')
-    (replaceB lb2 "W" wexp));
-    --FIXME: Have not changed the indices in the second copy
-   While _ wc count _ ->
-     let b'' = mkassert (Seq wc wc) b _UU0393_ in
-     -- XXX: Now update the Wnum with (n-1) * Wnum value
-     let b''' = replaceBWnum b'' (count Prelude.- 1) in
-     b'''
-   }
-  
-
-
+--FIXME: Indices
+mkassert (While _ wc count _ unroll) b state mult = (b'', mult)
+  where
+    (b'', _) =
+      --FIXME: Fix this to make it more general later
+      if (Prelude.&&) unroll ((count `Prelude.rem` 2) Prelude.== 0) then
+        let cm = (count `Prelude.div` 2) in
+          mkassert (Seq wc wc) b state (cm Prelude.* mult)
+      else mkassert wc b state (count Prelude.* mult)
