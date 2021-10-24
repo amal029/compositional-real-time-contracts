@@ -139,15 +139,18 @@ replaceB b x e =
 mkassert :: Cmd -> Bexp -> State Prelude.Integer -> Prelude.Integer ->
             (Bexp, Prelude.Integer)
 mkassert Skip b _ mult = (b, mult) 
+
 mkassert (Assign x0 e) b state mult = (llb, mult)
   where
     v = computeWcet state (Assign x0 e)
     b' = replaceB b x0 e
     llb = replaceB b' "W" (Minus (Avar "W") (Wnum (v Prelude.* mult)));
+
 mkassert (Seq c1 c2) b state mult = (b'', mult)
   where
     (b', _) = mkassert c2 b state mult
     (b'', _) = mkassert c1 b' state mult
+
 mkassert (If b' t e) b state mult = (b'', mult)
   where
     v = bevalT state b'
@@ -158,11 +161,18 @@ mkassert (If b' t e) b state mult = (b'', mult)
           (And (Not b') (replaceB lb2 "W" wexp))
 
 --FIXME: Indices
-mkassert (While _ wc count _ unroll) b state mult = (b'', mult)
+mkassert (While b' wc count _ unroll) b state mult = (b'', mult)
   where
+    v = bevalT state b'
     (b'', _) =
       --FIXME: Fix this to make it more general later
-      if (Prelude.&&) unroll ((count `Prelude.rem` 2) Prelude.== 0) then
+      if unroll Prelude.&& Prelude.even count then
         let cm = (count `Prelude.div` 2) in
-          mkassert (Seq wc wc) b state (cm Prelude.* mult)
-      else mkassert wc b state (count Prelude.* mult)
+        let (y, m) = mkassert (Seq wc wc) b state (cm Prelude.* mult) in
+          (replaceB y "W" (Minus (Avar "W")
+                           (Wnum (v Prelude.* (cm Prelude.+ 1) Prelude.* mult)))
+          , m)
+      else
+        let tt = (count Prelude.+ 1) Prelude.* mult in
+        let (y, m) = mkassert wc b state (count Prelude.* mult) in
+          (replaceB y "W" (Minus (Avar "W") (Wnum (v Prelude.* tt))), m)

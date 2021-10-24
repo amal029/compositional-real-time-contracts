@@ -3,7 +3,7 @@
 from z3 import Solver, parse_smt2_file, Int, sat
 
 
-def binary_search(lb, ub, s, makespan, epsilon=1e-6):
+def maximise_magic(lb, ub, s, makespan, epsilon=1e-6):
     if (ub - lb <= epsilon):
         s.check()
         return s.model()
@@ -14,9 +14,9 @@ def binary_search(lb, ub, s, makespan, epsilon=1e-6):
         ret = s.check()
         s.pop()
         if ret == sat:
-            return binary_search(half, ub, s, makespan, epsilon)
+            return maximise_magic(half, ub, s, makespan, epsilon)
         else:
-            return binary_search(lb, half, s, makespan, epsilon)
+            return maximise_magic(lb, half, s, makespan, epsilon)
 
 
 def main(fname):
@@ -26,8 +26,8 @@ def main(fname):
     s.add(eqn)
     # print(s)
     s.check()
-    print('Model: ', binary_search(0, 10000000, s, W))
+    print('Model: ', maximise_magic(0, 10000000, s, W))
 
 
 if __name__ == '__main__':
-    main('binarySearch.smt2')
+    main('expInt.smt2')

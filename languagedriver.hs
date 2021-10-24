@@ -133,6 +133,7 @@ prog5 = "i" != Anum 0!
 
 
 --Example janne Complex
+--XXX: Works
 janneComplex :: Cmd
 janneComplex =
   While (Avar "a" < Anum 30)
@@ -145,11 +146,12 @@ janneComplex =
       If ((Avar "b" >= Anum 10) && (Avar "b" <= Anum 12))
       ("a" != Avar "a" + Anum 10)
       ("a" != Avar "a" + Anum 1)
-    ) 9 [] Prelude.False !
+    ) 10 [] Prelude.False !
   "a" != Avar "a" + Anum 2!
   "b" != Avar "b" - Anum 10
-  ) 11 [] Prelude.False
+  ) 12 [] Prelude.True
 
+--XXX: Works
 sqrtFunction :: Cmd
 sqrtFunction =
   "x" != Avar "val" * Anum 0.1!
@@ -177,6 +179,7 @@ sqrtFunction =
     ) 20 [] Prelude.True
   )
 
+--XXX: Works
 binarySearch :: Cmd
 binarySearch =
   "fvalue" != Anum (-1)!
@@ -198,12 +201,13 @@ binarySearch =
     )
   ) 14 [] Prelude.True --XXX: Check the loop count here
 
+--XXX: Works
 facultyFunction :: Cmd
 facultyFunction =
   "s" != Anum 0!
   "acc" != Anum 1!
   "i" != Anum 0!
-  "n" != Anum 5!
+  "n" != Anum 6!
   While(Avar "i" <= Avar "n")
   (
     "j" != Avar "i"!
@@ -212,10 +216,68 @@ facultyFunction =
     (
       "acc" != Avar "acc" * Avar "j"!
       "j" != Avar "j" + Anum 1
-    ) 5 [] Prelude.False !
+    ) 6 [] Prelude.True !
     "s" != Avar "acc" + Avar "s"!
     "i" != Avar "i" + Anum 1
-  ) 5 [] Prelude.False
+  ) 6 [] Prelude.True
+
+--XXX: Works
+expInt :: Cmd
+expInt =
+  --XXX: Make n = 2 and x = 0 gives the worst case
+  "n" != Anum 50! "x" != Anum 1! 
+  "i" != Anum 0! "ii" != Anum 0!
+  "nm1" != Anum 0! "a" != Anum 0! "b" != Anum 0! "c" != Anum 0!
+  "d" != Anum 0! "del" != Anum 0! "fact" != Anum 0! "h" != Anum 0!
+  "psi" != Anum 0! "ans" != Anum 0!
+
+  "nm1" != Avar "n" - Anum 1!
+  If(Avar "x" > Anum 1)
+  (
+    "b" != Avar "x" + Avar "n" !
+    "c" != Anum 2000000!
+    "d" != Anum 3000000!
+    "h" != Avar "d" !
+    "i" != Anum 1 !
+    While (Avar "i" < Anum 100)
+    (
+      "a" != (Anum (-1) * Avar "i") * (Avar "nm1" + Anum 1) !
+      "b" != Avar "b" + Anum 2!
+      "d" != Anum 10 * (Avar "a" * Avar "d" + Avar "b")!
+      "c" != Avar "b" + Avar "a" / Avar "c" !
+      "del" != Avar "c" * Avar "d" !
+      "h" != Avar "h" * Avar "del"!
+      If(Avar "del" < Anum 10000)
+      ("ans" != Avar "h" * (Anum (-1) * Avar "x"))
+      Skip !
+      "i" != Avar "i" + Anum 1
+    ) 100 [] Prelude.True
+  )
+  (
+    If(Avar "nm1" == Anum 0) ("ans" != Anum 1000) ("ans" != Anum 2)!
+    "fact" != Anum 1!
+    "i" != Anum 1!
+    While(Avar "i" < Anum 100)
+    (
+      "fact" != Avar "fact" * (Avar "x" / Avar "i")!
+      If(Not(Avar "i" == Avar "nm1"))
+      ("del" != (Anum (-1) * Avar "fact")/(Avar "i" - Avar "nm1"))
+      (
+        "psi" != Anum 255!
+        "ii" != Anum 1!
+        While(Avar "i" < Avar "nm1")
+        (
+          "psi" != Avar "psi" + Avar "ii" + Avar "nm1"!
+          "ii" != Avar "ii" + Anum 1
+        ) 50 [] Prelude.True !
+        "tutu" != Avar "x" * Avar "x" + (Anum 8 * Avar "x") * Anum 16 - Avar "x"!
+        "del" != Avar "psi" + Avar "fact" * Avar "tutu"
+      )!
+      "i" != Avar "i" + Anum 1
+    ) 100 [] Prelude.True
+  )
+  
+
 
 -- First get all the variables in mkassert
 agetVars :: Aexp -> Set Prelude.String -> Set Prelude.String
@@ -290,6 +352,6 @@ mkSMT prog = (smt, mm) where
 main :: Prelude.IO ()
 main = do
   Prelude.print (computeWcet
-                 (store (store (\_ -> 0) "store" 1) "not" 1) binarySearch)
-  let (smt, _) = mkSMT binarySearch in
-    Prelude.writeFile  "binarySearch.smt2" smt
+                 (store (store (\_ -> 0) "store" 1) "not" 1) expInt)
+  let (smt, _) = mkSMT expInt in
+    Prelude.writeFile  "expInt.smt2" smt
