@@ -303,6 +303,14 @@ tulikaIte =
   ("z" != (Avar "z" - Anum 1))
 
 
+exloop :: Cmd
+exloop =
+  "i" != Anum 0!
+  While(Avar "i" < Anum 2)
+  ("i" != Avar "i" + Anum 1)
+  2 [] Prelude.True
+
+
 -- First get all the variables in mkassert
 agetVars :: Aexp -> Set Prelude.String -> Set Prelude.String
 agetVars (Avar x) s = Set.insert x s
@@ -376,6 +384,6 @@ mkSMT prog = (smt, mm) where
 main :: Prelude.IO ()
 main = do
   Prelude.print (computeWcet
-                 (store (store (\_ -> 0) "store" 1) "not" 1) ex1_claire)
-  let (smt, _) = mkSMT ex1_claire in
-    Prelude.writeFile  "ex1_claire.smt2" smt
+                 (store (store (\_ -> 0) "store" 1) "not" 1) exloop)
+  let (smt, _) = mkSMT exloop in
+    Prelude.writeFile  "exloop.smt2" smt
