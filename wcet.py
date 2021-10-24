@@ -30,4 +30,4 @@ def main(fname):
 
 
 if __name__ == '__main__':
-    main('expInt.smt2')
+    main('ex1_claire.smt2')

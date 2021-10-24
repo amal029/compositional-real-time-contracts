@@ -276,7 +276,31 @@ expInt =
       "i" != Avar "i" + Anum 1
     ) 100 [] Prelude.True
   )
-  
+
+ex1_claire :: Cmd
+ex1_claire =
+  Assign "i" (Anum 0) !
+  Assign "j" (Anum 0) !
+  Assign "X" (Anum 0) !
+  While (Lt (Avar "i") (Anum 4))
+  (
+    Assign "X" (Anum 1) !
+    While (Lt (Avar "j") (Anum 6))
+    (
+      Assign "X" (Plus (Avar "i") (Avar "j"))
+      `Seq`
+      Assign "j" (Plus (Avar "j") (Anum 1))
+    ) 6 [] Prelude.True !
+    Assign "j" (Plus (Avar "i") (Anum 1))
+  ) 4 [] Prelude.True
+
+tulikaIte :: Cmd
+tulikaIte =
+  If (Avar "x" > Anum 3) ("z" != Avar "z" + Anum 1) ("x" != Anum 1) !
+  If (Avar "y" == Anum 4) ("y" != Avar "y" + Anum 1) ("x" != Anum 1) !
+  If (Avar "x" < Anum 2)
+  ("z" != Avar "z"  / Anum 2)
+  ("z" != (Avar "z" - Anum 1))
 
 
 -- First get all the variables in mkassert
@@ -352,6 +376,6 @@ mkSMT prog = (smt, mm) where
 main :: Prelude.IO ()
 main = do
   Prelude.print (computeWcet
-                 (store (store (\_ -> 0) "store" 1) "not" 1) expInt)
-  let (smt, _) = mkSMT expInt in
-    Prelude.writeFile  "expInt.smt2" smt
+                 (store (store (\_ -> 0) "store" 1) "not" 1) ex1_claire)
+  let (smt, _) = mkSMT ex1_claire in
+    Prelude.writeFile  "ex1_claire.smt2" smt
