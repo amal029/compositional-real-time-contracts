@@ -97,6 +97,21 @@ prog3 = If (Avar "init" == Anum 1)
             "x" != Avar "x" * Anum 1) !
           "i" != Avar "i" + Anum 1) 4 [] Prelude.True
 
+progex :: Cmd
+progex = If (Avar "init" == Anum 1)
+        Skip
+        Skip !
+        "i" != Anum 0 !
+        While (Avar "i" < Avar "n")
+        (If (Avar "Y" == Anum 1)
+          ("cond" != Bexp0 (Not (Avar "init" == Anum 1))) --T branch
+          ("cond" != Bexp0 True) !
+         If (Avar "cond" == Bexp0 True)
+          Skip --T branch
+          ("x" != Avar "x" * Anum 1) !
+          "i" != Avar "i" + Anum 1) 4 [] Prelude.False
+
+
 --XXX: Program 2: Pascal Raymond' paper
 prog4 :: Cmd
 prog4 = If (Avar "init" == Anum 1)
@@ -270,12 +285,25 @@ expInt =
           "psi" != Avar "psi" + Avar "ii" + Avar "nm1"!
           "ii" != Avar "ii" + Anum 1
         ) 50 [] Prelude.True !
-        "tutu" != Avar "x" * Avar "x" + (Anum 8 * Avar "x") * Anum 16 - Avar "x"!
+        "tutu" != Avar "x" * Avar "x" + (Anum 8 * Avar "x") *
+        Anum 16 - Avar "x"!
         "del" != Avar "psi" + Avar "fact" * Avar "tutu"
       )!
       "i" != Avar "i" + Anum 1
     ) 100 [] Prelude.True
   )
+
+firFilter :: Cmd
+firFilter =
+  "i" != Anum 0!
+  "y" != Anum 0!
+  "M" != Anum 4!
+  While(Avar "i" <= Avar "M")
+  (
+    "y" != Avar "y" + (Avar "h" * Avar "w")!
+    "i" != Avar "i" + Anum 1
+  ) 4 [] Prelude.False
+
 
 ex1_claire :: Cmd
 ex1_claire =
@@ -384,6 +412,6 @@ mkSMT prog = (smt, mm) where
 main :: Prelude.IO ()
 main = do
   Prelude.print (computeWcet
-                 (store (store (\_ -> 0) "store" 1) "not" 1) exloop)
-  let (smt, _) = mkSMT exloop in
-    Prelude.writeFile  "exloop.smt2" smt
+                 (store (store (\_ -> 0) "store" 1) "not" 1) firFilter)
+  let (smt, _) = mkSMT firFilter in
+    Prelude.writeFile  "firFilter.smt2" smt
